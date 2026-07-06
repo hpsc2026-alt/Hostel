@@ -1370,10 +1370,15 @@ let nsCurrentStatus = null;
 
 function nsGetBlockStudents(){
   if(allStudents.length===0) assignRooms();
-  const raw = sessionStorage.getItem('hms_user');
+  const raw = localStorage.getItem('hms_user');
   const user = raw ? JSON.parse(raw) : {role:'super'};
   const blk = ASST_BLOCK_MAP[user.id] || null;
-  const students = blk ? allStudents.filter(s=>(s.block||s.blk)===blk) : allStudents;
+  let students = blk ? allStudents.filter(s=>(s.block||s.blk)===blk) : allStudents;
+  // ছুটিতে থাকা ছাত্রদের দৈনন্দিন রিপোর্টিং (নামাজ, পরিচ্ছন্নতা, ইউনিফর্ম, অসুস্থতা,
+  // আরবি ক্লাস, পড়া/বিশ্রাম, রাতের হাজিরা ইত্যাদি সব জায়গা) থেকে বাদ দেওয়া হয়
+  if(typeof lvRecords!=='undefined' && typeof lvIsActiveToday==='function'){
+    students = students.filter(s => !lvRecords.some(r=>r.stuSerial===s.serial && lvIsActiveToday(r)));
+  }
   return {user, blk, students};
 }
 
@@ -1587,7 +1592,7 @@ let acCurrentOption = null;
 
 function acGetBlockStudents(){
   if(allStudents.length===0) assignRooms();
-  const raw = sessionStorage.getItem('hms_user');
+  const raw = localStorage.getItem('hms_user');
   const user = raw ? JSON.parse(raw) : {role:'super'};
   const blk = ARABIC_TEACHER_BLOCK_MAP[user.id] || null;
   const students = blk ? allStudents.filter(s=>(s.block||s.blk)===blk) : allStudents;
@@ -1605,7 +1610,7 @@ let acUnsubscribe = null;
 function acOpenStudentList(){
   const {blk} = acGetBlockStudents();
   document.getElementById('ac-page-title').textContent = 'আরবি ক্লাস';
-  document.getElementById('ac-page-sub').textContent = blk ? ('ব্লক '+blk+' — '+(ARABIC_TEACHER_NAMES[JSON.parse(sessionStorage.getItem('hms_user')||'{}').id]||BLOCKS[blk].supervisor)) : 'সকল আরবি শিক্ষকের ছাত্র';
+  document.getElementById('ac-page-sub').textContent = blk ? ('ব্লক '+blk+' — '+(ARABIC_TEACHER_NAMES[JSON.parse(localStorage.getItem('hms_user')||'{}').id]||BLOCKS[blk].supervisor)) : 'সকল আরবি শিক্ষকের ছাত্র';
   acRenderList();
   showPage('arabic');
 
@@ -1631,7 +1636,7 @@ function acToggle(serial, optKey){
   if(stu) acToast(stu.name+' — '+(turningOn?o.label:'বাতিল করা হয়েছে'));
 
   if(turningOn && o.ptype && stu && typeof bhRecords!=='undefined'){
-    const raw = sessionStorage.getItem('hms_user');
+    const raw = localStorage.getItem('hms_user');
     const u = raw ? JSON.parse(raw) : {name:'আরবি শিক্ষক'};
     const rec = {
       id: bhNextId++, stuName: stu.name.toUpperCase(), cls: stu.cls, blk: (stu.block||stu.blk),
@@ -1726,7 +1731,7 @@ function acShowReport(){
 
 // ── সময়সীমা ও স্টাফ-পারফরম্যান্স সহায়ক ফাংশন (পরিচ্ছন্নতা/পড়া ও ইউনিফর্মের জন্য ভাগাভাগি) ──
 function getSessionUser(){
-  const raw = sessionStorage.getItem('hms_user');
+  const raw = localStorage.getItem('hms_user');
   return raw ? JSON.parse(raw) : {role:'super', id:'', name:'অজানা'};
 }
 
@@ -2027,6 +2032,39 @@ function nudgeStaffKpi(taskId, blk, kpiField){
   </div>
 </div>
 <div class="ns-toast" id="nr-toast"></div>
+
+<!-- ══ PAGE: রাতের হাজিরা (ঘুম পরিদর্শন) ══ -->
+<div id="page-night-final-check" class="page" style="background:#faf8f2;min-height:100vh;padding-bottom:80px;">
+  <div class="topbar">
+    <div class="tb-back" onclick="goDashboard()">←</div>
+    <div class="tb-info"><div class="tb-title" id="nfc-page-title">রাতের হাজিরা</div><div class="tb-sub" id="nfc-page-sub">লোড হচ্ছে...</div></div>
+    <div class="tb-action" style="background:#faf8f2;border:1px solid #e2dbc7;border-radius:10px;font-size:15px;" onclick="nfcShowReport()">📊</div>
+  </div>
+
+  <div class="ns-hero">
+    <div style="font-size:13px;font-weight:700;color:#24313b;">🛌 ঘুমানোর সময় সর্বশেষ যে অবস্থায় ছাত্রকে পাওয়া গেছে, তা নির্বাচন করুন</div>
+    <div class="ns-stat-row">
+      <div class="ns-stat"><div class="ns-stat-num" style="color:#2b7fd6" id="nfc-stat-sleep">০</div><div class="ns-stat-lbl">ঘুমে</div></div>
+      <div class="ns-stat"><div class="ns-stat-num" style="color:#2f9e5c" id="nfc-stat-study">০</div><div class="ns-stat-lbl">পড়ছে</div></div>
+      <div class="ns-stat"><div class="ns-stat-num" style="color:#a9822f" id="nfc-stat-other">০</div><div class="ns-stat-lbl">অন্যান্য</div></div>
+      <div class="ns-stat"><div class="ns-stat-num" style="color:#c94545" id="nfc-stat-pending">০</div><div class="ns-stat-lbl">বাকি আছে</div></div>
+    </div>
+  </div>
+
+  <div class="section-header">👨‍🎓 সব ছাত্র — একজনের জন্য একটি অবস্থা নির্বাচন করুন</div>
+  <div id="nfc-list"></div>
+
+  <div style="height:20px;"></div>
+
+  <div class="bottom-nav">
+    <div class="nav-item" onclick="goDashboard()"><div class="nav-icon">🏠</div><div class="nav-label">হোম</div></div>
+    <div class="nav-item" onclick="goStudents()"><div class="nav-icon">👨‍🎓</div><div class="nav-label">ছাত্র</div></div>
+    <div class="nav-item" onclick="goChecklist()"><div class="nav-icon">✅</div><div class="nav-label">চেকলিস্ট</div></div>
+    <div class="nav-item" onclick="goBehaviour()"><div class="nav-icon">⚖️</div><div class="nav-label">আচরণ</div></div>
+    <div class="nav-item" onclick="goAttendance()"><div class="nav-icon">🌙</div><div class="nav-label">হাজিরা</div></div>
+  </div>
+</div>
+<div class="ns-toast" id="nfc-toast"></div>
 
 <!-- ══ PAGE: হোস্টেল পরিদর্শন প্রতিবেদন (শুধু সুপার/অ্যাডমিন) ══ -->
 <div id="page-observation" class="page" style="background:#faf8f2;min-height:100vh;padding-bottom:80px;">
@@ -3515,6 +3553,116 @@ function nrShowReport(){
   alert(msg);
 }
 
+// ── রাতের হাজিরা (ঘুম পরিদর্শন) — দৈনন্দিন রুটিনের একদম শেষ কাজ ──
+// হাউজ টিউটর ঘুমানোর সময় শেষবার প্রতিটি ছাত্রকে যে অবস্থায় পেয়েছেন, তার একটিমাত্র (single-select) রেকর্ড
+const NFC_META = {
+  sleep: {label:'ঘুমে',    ico:'😴', color:'#2b7fd6'},
+  study: {label:'পড়ছে',   ico:'📖', color:'#2f9e5c'},
+  other: {label:'অন্যান্য', ico:'❓', color:'#a9822f'},
+};
+let nfcMarks = {}; // { serial: 'sleep'|'study'|'other' }
+let nfcUnsubscribe = null;
+
+function nfcOpenOptions(){
+  const {blk} = nsGetBlockStudents();
+  document.getElementById('nfc-page-title').textContent = 'রাতের হাজিরা';
+  document.getElementById('nfc-page-sub').textContent = blk ? ('ব্লক '+blk+' — '+BLOCKS[blk].supervisor) : 'সকল ব্লক';
+  nfcRenderList();
+  showPage('night-final-check');
+
+  if(nfcUnsubscribe) nfcUnsubscribe();
+  nfcUnsubscribe = fbListen('nightFinalCheck/'+fbTodayKey(), data=>{
+    nfcMarks = data || {};
+    nfcRenderList();
+  });
+}
+
+function nfcSetStatus(serial, key){
+  nfcMarks[serial] = key;
+  const {user, blk, students} = nsGetBlockStudents();
+  const stu = students.find(s=>s.serial===serial) || allStudents.find(s=>s.serial===serial);
+
+  if(typeof fbSet==='function') fbSet('nightFinalCheck/'+fbTodayKey()+'/'+serial, key);
+
+  if(stu){
+    nudgeStaffKpi('night-final-check', (stu.block||stu.blk), 'checklist');
+  }
+
+  nfcRenderList();
+  if(stu) nfcToast(stu.name+' — '+NFC_META[key].label);
+}
+
+function nfcToast(msg){
+  const t = document.getElementById('nfc-toast');
+  if(!t) return;
+  t.textContent = '✅ '+msg;
+  t.classList.add('show');
+  clearTimeout(window._nfcToastTimer);
+  window._nfcToastTimer = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+function nfcRenderRows(students){
+  return students.map(s=>{
+    const current = nfcMarks[s.serial];
+    return `<div class="cc-row">
+      <div class="cc-row-name">${s.name}</div>
+      <div class="cc-row-cls">${CLASS_BN[s.cls]} শ্রেণী • রুম ${s.room}</div>
+      <div class="cc-check-grid">
+        ${Object.keys(NFC_META).map(k=>{
+          const m = NFC_META[k];
+          const isSel = current===k;
+          return `<div class="cc-check ${isSel?'checked':''}" onclick="nfcSetStatus(${s.serial},'${k}')" style="${isSel?`background:${m.color}22;border-color:${m.color};color:${m.color};`:''}">
+            <span class="cc-box">${isSel?'✓':''}</span>${m.ico} ${m.label}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function nfcRenderList(){
+  const {blk, students} = nsGetBlockStudents();
+  const bnN = bnDigits;
+  let counts = {sleep:0, study:0, other:0};
+  students.forEach(s=>{ const m=nfcMarks[s.serial]; if(m && counts[m]!==undefined) counts[m]++; });
+  const pendingCount = students.length - (counts.sleep+counts.study+counts.other);
+
+  document.getElementById('nfc-stat-sleep').textContent = bnN(counts.sleep);
+  document.getElementById('nfc-stat-study').textContent = bnN(counts.study);
+  document.getElementById('nfc-stat-other').textContent = bnN(counts.other);
+  document.getElementById('nfc-stat-pending').textContent = bnN(pendingCount);
+
+  let html = '';
+  if(blk){
+    html += `<div class="ns-list-wrap">`+nfcRenderRows(students)+`</div>`;
+  } else {
+    ['A','B','C','D'].forEach(bk=>{
+      const studs = students.filter(s=>(s.block||s.blk)===bk);
+      if(!studs.length) return;
+      html += `<div class="ns-block-hd">ব্লক ${bk} — ${BLOCKS[bk].supervisor}</div>`;
+      html += `<div class="ns-list-wrap">`+nfcRenderRows(studs)+`</div>`;
+    });
+  }
+  document.getElementById('nfc-list').innerHTML = html;
+}
+
+function nfcShowReport(){
+  const {students} = nsGetBlockStudents();
+  const grouped = {sleep:[], study:[], other:[]};
+  const pending = [];
+  students.forEach(s=>{
+    const m = nfcMarks[s.serial];
+    if(m && grouped[m]) grouped[m].push(s.name);
+    else pending.push(s.name);
+  });
+  let msg = 'রাতের হাজিরা রিপোর্ট:\n\n';
+  msg += '😴 ঘুমে ('+grouped.sleep.length+'): '+(grouped.sleep.join(', ')||'—')+'\n\n';
+  msg += '📖 পড়ছে ('+grouped.study.length+'): '+(grouped.study.join(', ')||'—')+'\n\n';
+  msg += '❓ অন্যান্য ('+grouped.other.length+'): '+(grouped.other.join(', ')||'—')+'\n\n';
+  msg += '⭕ এখনো দেখা হয়নি ('+pending.length+'): '+(pending.join(', ')||'—');
+  alert(msg);
+}
+
 // ── অসুস্থ শিক্ষার্থীদের খোঁজখবর সিস্টেম (দুপুরের রুটিন) ──
 const SF_COND = {
   worse:     {label:'অসুস্থতা বেড়েছে', ico:'🔴', cls:'ns-badge-qaza'},
@@ -3588,11 +3736,13 @@ function sfSetCondition(serial, cond){
   if(turningOn){
     const stu = allStudents.find(s=>s.serial===serial);
     if(stu){
-      const rec = hlRecords.find(r=>r.stuName===stu.name.toUpperCase() && (r.status==='active'||r.status==='recovering'));
-      if(rec){
+      // একই ছাত্রের একাধিক সক্রিয় স্বাস্থ্য রেকর্ড থাকলে সবগুলোই হালনাগাদ করা হয়,
+      // নাহলে একটি রেকর্ড আপডেট হলেও বাকিগুলো "অসুস্থ" হিসেবেই থেকে যেত।
+      const matches = hlRecords.filter(r=>r.stuName===stu.name.toUpperCase() && (r.status==='active'||r.status==='recovering'));
+      matches.forEach(rec=>{
         if(cond==='recovered' && typeof hlMarkRecovered==='function'){ hlMarkRecovered(rec.id); }
         else if(cond==='better'){ rec.status='recovering'; if(typeof fbSet==='function') fbSet('healthRecords/'+rec.id, rec); }
-      }
+      });
     }
   }
   const {blk} = nsGetBlockStudents();
@@ -3927,10 +4077,10 @@ function scShowReport(){
 <div id="page-students" class="page" style="background:#faf8f2;min-height:100vh;padding-bottom:80px;overflow-x:hidden;width:100%;">
 <!-- টপবার -->
 <div class="topbar">
-  <div class="back-btn" onclick="showPage('dashboard')">←</div>
+  <div class="back-btn" onclick="goDashboard()">←</div>
   <div class="topbar-info">
     <div class="topbar-title">👨‍🎓 ছাত্র তালিকা</div>
-    <div class="topbar-sub" id="topbarSub">মোট ১০২ জন আবাসিক ছাত্র</div>
+    <div class="topbar-sub" id="stuTopbarSub">লোড হচ্ছে...</div>
   </div>
   <div class="add-btn" title="নতুন ছাত্র যোগ করুন" onclick="stuOpenAddModal()">+</div>
 </div>
@@ -3943,7 +4093,7 @@ function scShowReport(){
 
 <!-- ফিল্টার ট্যাব -->
 <div class="filter-scroll" id="filterTabs">
-  <div class="filter-tab active" onclick="filterBy('all',this)">সবাই (১০২)</div>
+  <div class="filter-tab active" onclick="filterBy('all',this)" id="filterTabAll">সবাই</div>
   <div class="filter-tab" onclick="filterBy('IV',this)">চতুর্থ শ্রেণী</div>
   <div class="filter-tab" onclick="filterBy('V',this)">পঞ্চম শ্রেণী</div>
   <div class="filter-tab" onclick="filterBy('VI',this)">ষষ্ঠ শ্রেণী</div>
@@ -3955,10 +4105,10 @@ function scShowReport(){
 
 <!-- স্ট্যাট বার -->
 <div class="stat-bar">
-  <div class="sb-item"><div class="sb-num" style="color:#2b7fd6">১০২</div><div class="sb-label">মোট</div></div>
-  <div class="sb-item"><div class="sb-num" style="color:#2f9e5c">৯৮</div><div class="sb-label">উপস্থিত</div></div>
-  <div class="sb-item"><div class="sb-num" style="color:#a9822f">৪</div><div class="sb-label">ছুটিতে</div></div>
-  <div class="sb-item"><div class="sb-num" style="color:#c94545">২</div><div class="sb-label">অসুস্থ</div></div>
+  <div class="sb-item"><div class="sb-num" style="color:#2b7fd6" id="sb-total">০</div><div class="sb-label">মোট</div></div>
+  <div class="sb-item"><div class="sb-num" style="color:#2f9e5c" id="sb-present">০</div><div class="sb-label">উপস্থিত</div></div>
+  <div class="sb-item"><div class="sb-num" style="color:#a9822f" id="sb-leave">০</div><div class="sb-label">ছুটিতে</div></div>
+  <div class="sb-item"><div class="sb-num" style="color:#c94545" id="sb-sick">০</div><div class="sb-label">অসুস্থ</div></div>
 </div>
 
 <!-- ছাত্র তালিকা -->
@@ -4132,7 +4282,7 @@ async function doLogin(){
         ROLE_LABELS[currentRole]+' হিসেবে সফলভাবে প্রবেশ করেছেন। ড্যাশবোর্ড লোড হচ্ছে...';
 
       // সেশন সেভ
-      sessionStorage.setItem('hms_user', JSON.stringify({
+      localStorage.setItem('hms_user', JSON.stringify({
         id: found.id,
         name: found.name,
         role: currentRole,
@@ -4204,12 +4354,13 @@ const ROLE_CONFIG = {
   admin: {
     banner: {cls:'rb-admin', icon:'👑', title:'সুপার অ্যাডমিন প্যানেল', desc:'সমস্ত হোস্টেল কার্যক্রম পর্যবেক্ষণ করুন।'},
     stats: [
-      {icon:'👨‍🎓', label:'মোট ছাত্র', val:'১০২', badge:'সক্রিয়', cls:'sc-blue', nav:'goStudents'},
-      {icon:'🏠', label:'মোট রুম', val:'২৫', badge:'২ ফ্লোর', cls:'sc-teal', nav:'goRooms'},
-      {icon:'✅', label:'আজ উপস্থিত', val:'৯৮', badge:'৯৬%', cls:'sc-green', nav:'goAttendance'},
+      {icon:'👨‍🎓', label:'মোট ছাত্র', val:'—', badge:'সক্রিয়', cls:'sc-blue', nav:'goStudents', id:'stat-total-students'},
+      {icon:'🏠', label:'মোট রুম', val:'—', badge:'২ ফ্লোর', cls:'sc-teal', nav:'goRooms', id:'stat-total-rooms'},
+      {icon:'✅', label:'আজ উপস্থিত', val:'—', badge:'হোস্টেলে আছে', cls:'sc-green', nav:'goAttendance', id:'stat-present-today'},
       {icon:'⚠️', label:'অ্যালার্ট', val:'৩', badge:'জরুরি', cls:'sc-red', nav:'goComplaintCenter'},
-      {icon:'🏥', label:'অসুস্থ', val:'২', badge:'চিকিৎসাধীন', cls:'sc-amber', nav:'goHealth'},
+      {icon:'🏥', label:'অসুস্থ', val:'—', badge:'চিকিৎসাধীন', cls:'sc-amber', nav:'goHealth', id:'stat-sick-count'},
       {icon:'⚖️', label:'অভিযোগ', val:'১', badge:'আজকের', cls:'sc-purple', nav:'goComplaintCenter'},
+      {icon:'🏠', label:'বাড়িতে আছে', val:'০', badge:'আগে ফিরলে ট্যাপ করুন', cls:'sc-amber', nav:'goEarlyReturn', id:'stat-home-count'},
     ],
     quickActions: [
       {icon:'📊', label:'সম্পূর্ণ রিপোর্ট', onclick:'goReport()'},
@@ -4223,12 +4374,13 @@ const ROLE_CONFIG = {
   super: {
     banner: {cls:'rb-super', icon:'🏆', label:'হোস্টেল সুপার', title:'হোস্টেল সুপার ড্যাশবোর্ড', desc:'সামগ্রিক হোস্টেল পরিচালনা ও পর্যবেক্ষণ।'},
     stats: [
-      {icon:'👨‍🎓', label:'মোট ছাত্র', val:'১০২', badge:'সক্রিয়', cls:'sc-blue', nav:'goStudents'},
-      {icon:'✅', label:'আজ উপস্থিত', val:'৯৮', badge:'৯৬%', cls:'sc-green', nav:'goAttendance'},
-      {icon:'🚪', label:'ছুটিতে', val:'৪', badge:'বাড়িতে', cls:'sc-amber', nav:'goLeave'},
+      {icon:'👨‍🎓', label:'মোট ছাত্র', val:'—', badge:'সক্রিয়', cls:'sc-blue', nav:'goStudents', id:'stat-total-students'},
+      {icon:'✅', label:'আজ উপস্থিত', val:'—', badge:'হোস্টেলে আছে', cls:'sc-green', nav:'goAttendance', id:'stat-present-today'},
+      {icon:'🚪', label:'ছুটিতে', val:'—', badge:'বাড়িতে', cls:'sc-amber', nav:'goLeave', id:'stat-leave-count'},
       {icon:'⚠️', label:'অ্যালার্ট', val:'৩', badge:'জরুরি', cls:'sc-red', nav:'goComplaintCenter'},
-      {icon:'🏥', label:'অসুস্থ', val:'২', badge:'চিকিৎসাধীন', cls:'sc-amber', nav:'goHealth'},
-      {icon:'✅', label:'চেকলিস্ট', val:'৫/১২', badge:'চলমান', cls:'sc-teal', nav:'goChecklist'},
+      {icon:'🏥', label:'অসুস্থ', val:'—', badge:'চিকিৎসাধীন', cls:'sc-amber', nav:'goHealth', id:'stat-sick-count'},
+      {icon:'✅', label:'চেকলিস্ট', val:'—', badge:'চলমান', cls:'sc-teal', nav:'goChecklist', id:'stat-checklist'},
+      {icon:'🏠', label:'বাড়িতে আছে', val:'০', badge:'আগে ফিরলে ট্যাপ করুন', cls:'sc-amber', nav:'goEarlyReturn', id:'stat-home-count'},
     ],
     quickActions: [
       {icon:'🚨', label:'অভিযোগ কেন্দ্র', onclick:'goComplaintCenter()'},
@@ -4242,10 +4394,10 @@ const ROLE_CONFIG = {
   asst: {
     banner: {cls:'rb-asst', icon:'🌙', title:'হাউজ টিউটর ড্যাশবোর্ড', desc:'আপনার ব্লকের ছাত্র, দৈনন্দিন রুটিন ও অভিযোগ — এখানেই সব।'},
     stats: [
-      {icon:'✅', label:'আমার চেকলিস্ট', val:'৫/১২', badge:'চলমান', cls:'sc-teal', nav:'goChecklist'},
-      {icon:'👨‍🎓', label:'আমার ছাত্র', val:'২৬', badge:'রুম ২০১-২১৩', cls:'sc-blue', nav:'goStudents'},
+      {icon:'✅', label:'আমার চেকলিস্ট', val:'—', badge:'চলমান', cls:'sc-teal', nav:'goChecklist', id:'stat-checklist'},
+      {icon:'👨‍🎓', label:'আমার ছাত্র', val:'—', badge:'আমার ব্লক', cls:'sc-blue', nav:'goStudents', id:'stat-my-students'},
       {icon:'⚠️', label:'পেন্ডিং', val:'২', badge:'জরুরি', cls:'sc-red', nav:'goChecklist'},
-      {icon:'🏥', label:'অসুস্থ', val:'১', badge:'আমার ফ্লোর', cls:'sc-amber', nav:'goHealth'},
+      {icon:'🏥', label:'অসুস্থ', val:'—', badge:'আমার ফ্লোর', cls:'sc-amber', nav:'goHealth', id:'stat-sick-count'},
     ],
     quickActions: [
       {icon:'✅', label:'দৈনন্দিন রুটিন', onclick:'goChecklist()'},
@@ -4293,6 +4445,7 @@ const ROUTINE = [
   {time:'সন্ধ্যা', icon:'📝', text:'সন্ধ্যার পড়া', status:'pending', id:'evening-study'},
   {time:'এশা', icon:'🕌', text:'এশা নামাজ ও রাতের খাবার', status:'pending', id:'isha-dinner'},
   {time:'রাত', icon:'🌙', text:'রাতের পড়া ও বিশ্রাম', status:'pending', id:'night-study-rest'},
+  {time:'রাত', icon:'🛌', text:'রাতের হাজিরা', status:'pending', id:'night-final-check'},
 ];
 
 // ── খেলাধুলা — সাধারণ ব্লক-ভিত্তিক টিকবক্স (ছাত্র-ভিত্তিক নয়, ক্লিক করে ভেতরে ঢুকতে হয় না) ──
@@ -4338,7 +4491,7 @@ const STAFF = [
 
 // ── পেজ রেন্ডার ──
 function renderDashboard(){
-  const raw = sessionStorage.getItem('hms_user');
+  const raw = localStorage.getItem('hms_user');
   const user = raw ? JSON.parse(raw) : {id:'demo',name:'ডেমো',role:'super',roleLabel:'হোস্টেল সুপার'};
   const cfg = ROLE_CONFIG[user.role] || ROLE_CONFIG.super;
   const dt = getBengaliDate();
@@ -4377,7 +4530,7 @@ function renderDashboard(){
   sg.innerHTML = cfg.stats.map((s,i)=>`
     <div class="stat-card ${s.cls}" style="animation-delay:${0.05+i*0.05}s;${s.nav?'cursor:pointer;':''}" ${s.nav?`onclick="if(typeof ${s.nav}==='function') ${s.nav}();"`:''}>
       <div class="stat-icon">${s.icon}</div>
-      <div class="stat-num">${s.val}</div>
+      <div class="stat-num" ${s.id?`id="${s.id}"`:''}>${s.val}</div>
       <div class="stat-label">${s.label}</div>
       <div class="stat-badge">${s.badge}</div>
     </div>`).join('');
@@ -4512,11 +4665,61 @@ function renderDashboard(){
     else nrItem.status = 'done';
   }
 
+  // রুটিন — রাতের হাজিরা (ঘুম পরিদর্শন) আইটেমের স্ট্যাটাস
+  const nfcItem = ROUTINE.find(r=>r.id==='night-final-check');
+  if(nfcItem && typeof nfcMarks!=='undefined'){
+    const {students} = nsGetBlockStudents();
+    const markedCount = students.filter(s=>!!nfcMarks[s.serial]).length;
+    if(markedCount===0) nfcItem.status = 'pending';
+    else if(markedCount < students.length) nfcItem.status = 'active';
+    else nfcItem.status = 'done';
+  }
+
   const done = ROUTINE.filter(r=>r.status==='done').length;
   const total = ROUTINE.length;
   const pct = Math.round(done/total*100);
   document.getElementById('routineProgressText').textContent = done+'/'+total+' সম্পন্ন';
   document.getElementById('progressFill').style.width = pct+'%';
+
+  // ── সামগ্রিক অবস্থা কার্ডগুলোর সংখ্যা আসল ডেটা থেকে হিসাব করা ──
+  // (আগে এগুলো স্থির/ডেমো সংখ্যা ছিল, তাই ছাত্র ডিলিট বা সুস্থ হওয়ার মতো
+  // পরিবর্তন ড্যাশবোর্ডে প্রতিফলিত হতো না)
+  const bnStat = n => (typeof bnDigits==='function') ? bnDigits(n) : String(n);
+  const onLeaveTodayCount = (typeof lvRecords!=='undefined' && typeof lvIsActiveToday==='function')
+    ? lvRecords.filter(r=>lvIsActiveToday(r)).length : 0;
+  const myBlkForStats = (typeof getMyRestrictedBlock==='function') ? getMyRestrictedBlock() : null;
+  const sickCount = (typeof hlRecords!=='undefined')
+    ? hlRecords.filter(r=>(r.status==='active' || r.status==='recovering') && (!myBlkForStats || r.blk===myBlkForStats)).length : 0;
+
+  const totalStudentsEl = document.getElementById('stat-total-students');
+  if(totalStudentsEl) totalStudentsEl.textContent = bnStat(allStudents.length);
+
+  const presentTodayEl = document.getElementById('stat-present-today');
+  if(presentTodayEl) presentTodayEl.textContent = bnStat(Math.max(0, allStudents.length - onLeaveTodayCount));
+
+  const sickCountEl = document.getElementById('stat-sick-count');
+  if(sickCountEl) sickCountEl.textContent = bnStat(sickCount);
+
+  const leaveCountEl = document.getElementById('stat-leave-count');
+  if(leaveCountEl) leaveCountEl.textContent = bnStat(onLeaveTodayCount);
+
+  const homeCountEl = document.getElementById('stat-home-count');
+  if(homeCountEl) homeCountEl.textContent = bnStat(onLeaveTodayCount);
+
+  const checklistEl = document.getElementById('stat-checklist');
+  if(checklistEl) checklistEl.textContent = bnStat(done)+'/'+bnStat(total);
+
+  const totalRoomsEl = document.getElementById('stat-total-rooms');
+  if(totalRoomsEl && typeof BR_BLOCKS!=='undefined'){
+    const roomCount = Object.values(BR_BLOCKS).reduce((s,b)=>s+b.rooms.length,0);
+    totalRoomsEl.textContent = bnStat(roomCount);
+  }
+
+  const myStudentsEl = document.getElementById('stat-my-students');
+  if(myStudentsEl){
+    const myCount = myBlkForStats ? allStudents.filter(s=>(s.block||s.blk)===myBlkForStats).length : allStudents.length;
+    myStudentsEl.textContent = bnStat(myCount);
+  }
 
   const statusIcon = {done:'✅', active:'🔄', pending:'⭕', missed:'❌'};
   const routineClick = {
@@ -4534,6 +4737,7 @@ function renderDashboard(){
     'evening-study': `onclick="esOpenOptions()" style="cursor:pointer"`,
     'isha-dinner': `onclick="idOpenOptions()" style="cursor:pointer"`,
     'night-study-rest': `onclick="nrOpenOptions()" style="cursor:pointer"`,
+    'night-final-check': `onclick="nfcOpenOptions()" style="cursor:pointer"`,
   };
   document.getElementById('routineList').innerHTML = ROUTINE.map(r=>`
     <div class="routine-item" ${routineClick[r.id]||''}>
@@ -4652,7 +4856,7 @@ function findAndShowStuProfile(name){
   if(s) showStudentProfile(s.serial,"behaviour");
 }
 function showSuperProfile(){
-  const raw=sessionStorage.getItem("hms_user");
+  const raw=localStorage.getItem("hms_user");
   const u=raw?JSON.parse(raw):{role:"admin"};
   if(u.role==="super") goSuperSummary();
   else showStaffProfile("super","dashboard");
@@ -4664,7 +4868,7 @@ function goRanking(){ rkRender(); showPage("ranking"); }
 function goStaffKpi(){ skRender(); showPage("staff-kpi"); }
 function showAlerts(){alert('🔔 '+ALERTS.length+'টি সক্রিয় অ্যালার্ট আছে।');}
 function showProfile(){
-  const raw = sessionStorage.getItem('hms_user');
+  const raw = localStorage.getItem('hms_user');
   const u = raw ? JSON.parse(raw) : {};
   document.getElementById('pf-name').textContent = u.name || '—';
   document.getElementById('pf-role').textContent = (u.roleLabel||'') + (u.id ? ' • আইডি: '+u.id : '');
@@ -4689,7 +4893,7 @@ function pwShowError(msg){
 }
 
 async function submitPasswordChange(){
-  const raw = sessionStorage.getItem('hms_user');
+  const raw = localStorage.getItem('hms_user');
   const u = raw ? JSON.parse(raw) : null;
   if(!u){ pwShowError('সেশন পাওয়া যায়নি, আবার লগইন করুন।'); return; }
 
@@ -4716,7 +4920,7 @@ async function submitPasswordChange(){
 
 function doLogout(){
   if(!confirm('আপনি কি লগআউট করতে চান?')) return;
-  sessionStorage.removeItem('hms_user');
+  localStorage.removeItem('hms_user');
   closeProfile();
   document.getElementById('loginForm').classList.remove('hide');
   document.getElementById('successInline').classList.remove('show');
@@ -4932,7 +5136,35 @@ function doSearch(){
   render();
 }
 
+function updateStudentPageStats(){
+  const myBlk = getMyRestrictedBlock();
+  const scope = myBlk ? allStudents.filter(s=>(s.block||s.blk)===myBlk) : allStudents;
+  const total = scope.length;
+
+  const onLeaveCount = (typeof lvRecords!=='undefined' && typeof lvIsActiveToday==='function')
+    ? scope.filter(s=>lvRecords.some(r=>r.stuSerial===s.serial && lvIsActiveToday(r))).length : 0;
+
+  const sickNames = (typeof hlRecords!=='undefined')
+    ? hlRecords.filter(r=>(r.status==='active'||r.status==='recovering') && (!myBlk || r.blk===myBlk)).map(r=>r.stuName) : [];
+  const sickCount = scope.filter(s=>sickNames.includes(s.name.toUpperCase())).length;
+
+  const presentCount = Math.max(0, total - onLeaveCount - sickCount);
+
+  const bnN = (typeof bnDigits==='function') ? bnDigits : bn;
+  const totalEl = document.getElementById('sb-total'); if(totalEl) totalEl.textContent = bnN(total);
+  const presentEl = document.getElementById('sb-present'); if(presentEl) presentEl.textContent = bnN(presentCount);
+  const leaveEl = document.getElementById('sb-leave'); if(leaveEl) leaveEl.textContent = bnN(onLeaveCount);
+  const sickEl = document.getElementById('sb-sick'); if(sickEl) sickEl.textContent = bnN(sickCount);
+
+  const topbarSubEl = document.getElementById('stuTopbarSub');
+  if(topbarSubEl) topbarSubEl.textContent = 'মোট '+bnN(total)+' জন আবাসিক ছাত্র';
+
+  const filterAllEl = document.getElementById('filterTabAll');
+  if(filterAllEl) filterAllEl.textContent = 'সবাই ('+bnN(total)+')';
+}
+
 function render(){
+  updateStudentPageStats();
   const list = getFilteredStudents();
   const container = document.getElementById('mainList');
 
@@ -4966,8 +5198,8 @@ function render(){
       </div>
       <div class="students-list">`;
 
-    const stIco={'ss-present':'🟢','ss-leave':'🚪','ss-absent':'🔴','ss-sick':'🏥'};
-    const stTxt={'ss-present':'উপস্থিত','ss-leave':'ছুটিতে','ss-absent':'অনুপস্থিত','ss-sick':'অসুস্থ'};
+    const stIco={'ss-present':'🟢','ss-leave':'🏠','ss-absent':'🔴','ss-sick':'🏥'};
+    const stTxt={'ss-present':'উপস্থিত','ss-leave':'বাড়িতে','ss-absent':'অনুপস্থিত','ss-sick':'অসুস্থ'};
     const stCls={'ss-present':'ss-present','ss-leave':'ss-leave','ss-absent':'ss-absent','ss-sick':'ss-leave'};
     const toTc=n=>n.split(' ').map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ');
     studs.forEach((s, i) => {
@@ -5002,7 +5234,7 @@ function showStudent(idx){
   const s = allStudents[idx];
   if(!s) return;
   const bc = BLOCKS[s.block];
-  const statusTxt = s.status === 'ss-present' ? '✅ উপস্থিত' : s.status === 'ss-leave' ? '🚪 ছুটিতে' : '🏥 অসুস্থ';
+  const statusTxt = s.status === 'ss-present' ? '✅ উপস্থিত' : s.status === 'ss-leave' ? '🏠 বাড়িতে' : '🏥 অসুস্থ';
 
   document.getElementById('modalName').textContent = s.name;
   document.getElementById('modalClass').textContent = CLASS_BN[s.cls]+' শ্রেণী • ব্লক '+s.block+' • রুম '+s.room;
@@ -5119,7 +5351,7 @@ const shiftHours={ফজর:[3,7],সকাল:[7,12],দুপুর:[12,15],�
 const shiftIco={ফজর:'🌙',সকাল:'☀️',দুপুর:'🌤️',বিকেল:'🌅',সন্ধ্যা:'🌆',রাত:'🌙'};
 
 function renderChecklist(){
-  const raw=sessionStorage.getItem('hms_user');
+  const raw=localStorage.getItem('hms_user');
   const u=raw?JSON.parse(raw):{name:'ডেমো',roleLabel:'হাউজ টিউটর'};
   document.getElementById('cl-user-name').textContent=u.name+' — '+u.roleLabel;
   const d=new Date();
@@ -5425,7 +5657,7 @@ function bhSave(){
   if(!stuName){bhShowToast("ছাত্র নির্বাচন করুন","error");return;}
   if(!cat){bhShowToast("ঘটনার ধরন নির্বাচন করুন","error");return;}
   if(!desc){bhShowToast("বিবরণ লিখুন","error");return;}
-  const raw=sessionStorage.getItem("hms_user");
+  const raw=localStorage.getItem("hms_user");
   const u=raw?JSON.parse(raw):{name:"ডেমো"};
   const opt=stuSel.options[stuSel.selectedIndex];
   const rec={id:bhNextId++,stuName:stuName.toUpperCase(),cls:opt.dataset.cls||"",blk:opt.dataset.blk||"",cat,desc,type:bhPtsType,pts,time:"এইমাত্র",by:u.name,ts:Date.now()};
@@ -6003,7 +6235,7 @@ function findAndShowStuProfile(name){
   if(s) showStudentProfile(s.serial,"behaviour");
 }
 function showSuperProfile(){
-  const raw=sessionStorage.getItem("hms_user");
+  const raw=localStorage.getItem("hms_user");
   const u=raw?JSON.parse(raw):{role:"admin"};
   if(u.role==="super") goSuperSummary();
   else showStaffProfile("super","dashboard");
@@ -6048,7 +6280,7 @@ function hlSave(){
   if(!stuName){hlShowToast("ছাত্র নির্বাচন করুন","err");return;}
   if(!illness){hlShowToast("রোগের ধরন নির্বাচন করুন","err");return;}
   if(!medicine){hlShowToast("ওষুধের নাম লিখুন","err");return;}
-  const raw=sessionStorage.getItem("hms_user");
+  const raw=localStorage.getItem("hms_user");
   const u=raw?JSON.parse(raw):{name:"ডেমো"};
   const opt=stuSel.options[stuSel.selectedIndex];
   hlRecords.unshift({id:hlNextId++,stuName:stuName.toUpperCase(),cls:opt.dataset.cls||"",blk:opt.dataset.blk||"",illness,medicine,dosage,status,note,time:"এইমাত্র",by:u.name});
@@ -6069,53 +6301,6 @@ function hlFilter(f,el){
   hlRender();
 }
 
-function hlRender(){
-  const sick=hlRecords.filter(r=>r.status==="active").length;
-  const rec=hlRecords.filter(r=>r.status==="recovering").length;
-  const ok=hlRecords.filter(r=>r.status==="ok").length;
-  document.getElementById("hl-sick-count").textContent=bnH(sick);
-  document.getElementById("hl-rec-count").textContent=bnH(rec);
-  document.getElementById("hl-ok-count").textContent=bnH(ok);
-
-  let list=hlRecords;
-  if(hlFilterVal!=="all") list=list.filter(r=>r.status===hlFilterVal);
-  if(!list.length){
-    document.getElementById("hl-list").innerHTML="<div style='text-align:center;padding:40px 16px;color:#8b98a3'><div style='font-size:36px;margin-bottom:10px'>🏥</div><div>কোনো রেকর্ড নেই</div></div>";
-    return;
-  }
-  const stMap={active:{lbl:"অসুস্থ",cls:"hl-st-active",ico:"🔴"},recovering:{lbl:"সুস্থ হচ্ছে",cls:"hl-st-recovering",ico:"🟡"},ok:{lbl:"সুস্থ হয়েছে",cls:"hl-st-ok",ico:"🟢"}};
-  document.getElementById("hl-list").innerHTML=list.map((r,i)=>{
-    const st=stMap[r.status]||stMap.active;
-    const canRecover = r.status==="active" || r.status==="recovering";
-    return `<div class="hl-card" style="animation-delay:${i*.04}s">
-      <div class="hl-card-top">
-        <div class="hl-avatar">🤒</div>
-        <div class="hl-info">
-          <div class="hl-name">${r.stuName}</div>
-          <div class="hl-meta">${CLASS_BN[r.cls]||""} শ্রেণী • ব্লক ${r.blk}</div>
-        </div>
-        <div class="hl-status-badge ${st.cls}">${st.ico} ${st.lbl}</div>
-      </div>
-      <div class="hl-detail-row">
-        <div class="hl-detail-chip">🤒 ${r.illness}</div>
-        ${r.dosage?'<div class="hl-detail-chip">⏰ '+r.dosage+'</div>':""}
-      </div>
-      ${r.medicine&&r.medicine!=="—"?`<div class="hl-medicine-row">
-        <div class="hl-medicine-title">💊 ওষুধ</div>
-        <div class="hl-medicine-list">${r.medicine}</div>
-      </div>`:""}
-      ${r.note?'<div style="font-size:12px;color:#5c6f7a;margin-bottom:6px">📝 '+r.note+'</div>':""}
-      ${r.date?'<div style="font-size:10px;color:#8b98a3;margin-bottom:6px">📅 অসুস্থ হয়েছিল: '+r.date+'</div>':""}
-      ${r.recoveredDate?'<div style="font-size:10px;color:#2f9e5c;margin-bottom:6px">✅ সুস্থ হয়েছে: '+r.recoveredDate+'</div>':""}
-      <div class="hl-footer">
-        <span class="hl-footer-time">🕐 ${r.time}</span>
-        <span class="hl-footer-by">👤 ${r.by}</span>
-      </div>
-      ${canRecover?`<button onclick="hlMarkRecovered(${r.id})" style="width:100%;margin-top:10px;padding:9px;background:#e2f3e6;border:1.5px solid #2f9e5c55;border-radius:9px;color:#2f9e5c;font-size:12px;font-weight:700;cursor:pointer;font-family:'Segoe UI',sans-serif;">✅ সুস্থ হয়েছে — তারিখ যোগ করুন</button>`:""}
-    </div>`;
-  }).join("");
-}
-
 function hlMarkRecovered(id){
   const r = hlRecords.find(x=>x.id===id);
   if(!r) return;
@@ -6124,6 +6309,8 @@ function hlMarkRecovered(id){
   if(typeof fbSet==="function") fbSet('healthRecords/'+id, r);
   hlRender();
   hlShowToast("✅ "+r.stuName+" সুস্থ হয়েছে হিসেবে চিহ্নিত করা হয়েছে!","ok");
+  if(document.getElementById('page-dashboard')?.classList.contains('active') && typeof renderDashboard==='function') renderDashboard();
+  if(document.getElementById('page-students')?.classList.contains('active') && typeof updateStudentPageStats==='function') updateStudentPageStats();
 }
 
 function hlShowToast(msg,type){
@@ -6222,7 +6409,7 @@ function findAndShowStuProfile(name){
   if(s) showStudentProfile(s.serial,"behaviour");
 }
 function showSuperProfile(){
-  const raw=sessionStorage.getItem("hms_user");
+  const raw=localStorage.getItem("hms_user");
   const u=raw?JSON.parse(raw):{role:"admin"};
   if(u.role==="super") goSuperSummary();
   else showStaffProfile("super","dashboard");
@@ -7019,7 +7206,7 @@ let stupFromPage="students";
 
 const STU_STATUS_CHIPS={
   "st-present":{txt:"🟢 হোস্টেলে আছে",cls:"stup-here"},
-  "st-leave":{txt:"🚪 ছুটিতে আছে",cls:"stup-leave"},
+  "st-leave":{txt:"🏠 বাড়িতে আছে",cls:"stup-leave"},
   "st-sick":{txt:"🏥 অসুস্থ",cls:"stup-sick"},
   "st-absent":{txt:"🔴 অনুপস্থিত",cls:"stup-absent"},
 };
@@ -7124,11 +7311,11 @@ function showStudentProfile(serial, fromPage){
 
   const statusChips={
     "st-present":{txt:"🟢 হোস্টেলে আছে",cls:"stup-chip-present"},
-    "st-leave":  {txt:"🚪 ছুটিতে আছে",  cls:"stup-chip-leave"},
+    "st-leave":  {txt:"🏠 বাড়িতে আছে",  cls:"stup-chip-leave"},
     "st-sick":   {txt:"🏥 অসুস্থ",       cls:"stup-chip-sick"},
     "st-absent": {txt:"🔴 অনুপস্থিত",    cls:"stup-chip-absent"},
     "ss-present":{txt:"🟢 হোস্টেলে আছে",cls:"stup-chip-present"},
-    "ss-leave":  {txt:"🚪 ছুটিতে আছে",  cls:"stup-chip-leave"},
+    "ss-leave":  {txt:"🏠 বাড়িতে আছে",  cls:"stup-chip-leave"},
   };
   const onLeaveNow = (typeof lvRecords!=="undefined") && (typeof lvIsActiveToday==="function") && lvRecords.some(r=>r.stuSerial===s.serial && lvIsActiveToday(r));
   const effStatusForChip = onLeaveNow ? "ss-leave" : s.status;
@@ -8288,7 +8475,7 @@ function svSaveClean(){
   const status=document.getElementById("sv-clean-status").value;
   const note=document.getElementById("sv-clean-note").value.trim();
   if(!area){alert("এলাকা নির্বাচন করুন");return;}
-  const raw=sessionStorage.getItem("hms_user");
+  const raw=localStorage.getItem("hms_user");
   const u=raw?JSON.parse(raw):{name:"ডেমো"};
   const d=new Date();
   const h=bnSV(d.getHours()), m=bnSV(String(d.getMinutes()).padStart(2,"0"));
@@ -9888,7 +10075,7 @@ let brCurrentBlock="A";
 let brOpenRooms={};
 
 function renderDashBlockCards(){
-  const raw=sessionStorage.getItem("hms_user");
+  const raw=localStorage.getItem("hms_user");
   const u=raw?JSON.parse(raw):{role:"super"};
   const el=document.getElementById("dash-block-cards");
   if(!el) return;
@@ -9913,7 +10100,7 @@ function renderDashBlockCards(){
       </div>
       <div class="db-block-sup">👨‍🏫 ${b.supervisor}</div>
       <div class="db-block-count" style="color:${b.color}">${bnBR(total)}</div>
-      <div class="db-block-lbl">/ ${bnBR(cap)} জন</div>
+      <div class="db-block-lbl">জন ছাত্র</div>
       <div class="db-block-bar">
         <div class="db-block-fill" style="width:${pct}%;background:${b.color}"></div>
       </div>
@@ -9930,7 +10117,7 @@ function goBlockRooms(blk){
 
 function brRenderPage(){
   const b=BR_BLOCKS[brCurrentBlock];
-  const raw=sessionStorage.getItem("hms_user");
+  const raw=localStorage.getItem("hms_user");
   const u=raw?JSON.parse(raw):{role:"super"};
   const isAdmin=u.role==="admin";
 
@@ -10165,7 +10352,7 @@ document.addEventListener("click", e=>{
 
 function brRenderPage2(){
   const b=BR_BLOCKS[brCurrentBlock];
-  const raw=sessionStorage.getItem("hms_user");
+  const raw=localStorage.getItem("hms_user");
   const u=raw?JSON.parse(raw):{role:"super"};
   const isAdmin=(u.role==="admin"); // রুম নম্বর এডিট শুধু super admin
   const canEditStudents=(u.role==="admin"||u.role==="super"); // ছাত্র পরিবর্তন শুধু সুপার ও অ্যাডমিন
@@ -10404,9 +10591,10 @@ function hlRender(){
   let list=scoped;
   if(hlFilterVal!=="all") list=list.filter(r=>r.status===hlFilterVal);
   if(!list.length){document.getElementById("hl-list").innerHTML="<div style='text-align:center;padding:40px 16px;color:#8b98a3'><div style='font-size:36px;margin-bottom:10px'>🏥</div><div>কোনো রেকর্ড নেই</div></div>";return;}
-  const stMap={active:{lbl:"অসুস্থ",cls:"hl-st-active"},recovering:{lbl:"সুস্থ হচ্ছে",cls:"hl-st-recovering"},ok:{lbl:"সুস্থ হয়েছে",cls:"hl-st-ok"}};
+  const stMap={active:{lbl:"অসুস্থ",cls:"hl-st-active",ico:"🔴"},recovering:{lbl:"সুস্থ হচ্ছে",cls:"hl-st-recovering",ico:"🟡"},ok:{lbl:"সুস্থ হয়েছে",cls:"hl-st-ok",ico:"🟢"}};
   document.getElementById("hl-list").innerHTML=list.map((r,i)=>{
     const st=stMap[r.status]||stMap.active;
+    const canRecover = r.status==="active" || r.status==="recovering";
     return `<div class="hl-card" style="animation-delay:${i*.04}s">
       <div class="hl-card-top">
         <div class="hl-avatar">🤒</div>
@@ -10417,21 +10605,24 @@ function hlRender(){
           </div>
           <div class="hl-meta">${CLASS_BN[r.cls]||""} শ্রেণী • ব্লক ${r.blk}</div>
         </div>
-        <div class="hl-status-badge ${st.cls}">${st.lbl}</div>
+        <div class="hl-status-badge ${st.cls}">${st.ico} ${st.lbl}</div>
       </div>
       <div class="hl-detail-row">
         <div class="hl-detail-chip">🤒 ${r.illness}</div>
         ${r.dosage?'<div class="hl-detail-chip">⏰ '+r.dosage+'</div>':""}
       </div>
-      <div class="hl-medicine-row">
+      ${r.medicine&&r.medicine!=="—"?`<div class="hl-medicine-row">
         <div class="hl-medicine-title">💊 ওষুধ</div>
         <div class="hl-medicine-list">${r.medicine}</div>
-      </div>
+      </div>`:""}
       ${r.note?'<div style="font-size:12px;color:#5c6f7a;margin-bottom:6px">📝 '+r.note+'</div>':""}
+      ${r.date?'<div style="font-size:10px;color:#8b98a3;margin-bottom:6px">📅 অসুস্থ হয়েছিল: '+r.date+'</div>':""}
+      ${r.recoveredDate?'<div style="font-size:10px;color:#2f9e5c;margin-bottom:6px">✅ সুস্থ হয়েছে: '+r.recoveredDate+'</div>':""}
       <div class="hl-footer">
         <span class="hl-footer-time">🕐 ${r.time}</span>
         <span class="hl-footer-by">👤 ${r.by}</span>
       </div>
+      ${canRecover?`<button onclick="hlMarkRecovered(${r.id})" style="width:100%;margin-top:10px;padding:9px;background:#e2f3e6;border:1.5px solid #2f9e5c55;border-radius:9px;color:#2f9e5c;font-size:12px;font-weight:700;cursor:pointer;font-family:'Segoe UI',sans-serif;">✅ সুস্থ হয়েছে — তারিখ যোগ করুন</button>`:""}
     </div>`;
   }).join("");
 }
@@ -11031,6 +11222,110 @@ fbListen('studentRoster', data=>{
     if(typeof renderDashBlockCards==='function') renderDashBlockCards();
   }
 });
+</script>
+
+<!-- ══════════════════════════════════════════════════════════
+     সেশন পুনরুদ্ধার — আগে থেকে লগইন করা থাকলে রিফ্রেশ/অ্যাপ পুনরায়
+     চালু করলে আবার আইডি-পাসওয়ার্ড দিতে হবে না, সরাসরি ড্যাশবোর্ডে যাবে
+     ══════════════════════════════════════════════════════════ -->
+<script>
+(function autoRestoreSession(){
+  try{
+    const raw = localStorage.getItem('hms_user');
+    if(raw){
+      const user = JSON.parse(raw);
+      if(user && user.id && user.role){
+        goToDashboard();
+      }
+    }
+  }catch(e){ console.warn('সেশন পুনরুদ্ধারে সমস্যা:', e); }
+})();
+</script>
+
+<!-- ══════════════════════════════════════════════════════════
+     আগে ফিরে আসা ছাত্র নিশ্চিতকরণ — শুধুমাত্র অ্যাডমিন ও হোস্টেল সুপার
+     কখনো কখনো ছুটি শেষ হওয়ার আগেই ছাত্র হোস্টেলে ফিরে আসে — এই পেজ থেকে
+     সেটা একনলেজ করলে ছাত্র সাথে সাথে "উপস্থিত" হিসেবে দেখাবে
+     ══════════════════════════════════════════════════════════ -->
+<div id="page-early-return" class="page" style="background:#faf8f2;min-height:100vh;padding-bottom:80px;">
+  <div class="topbar">
+    <div class="tb-back" onclick="goDashboard()">←</div>
+    <div class="tb-info"><div class="tb-title">🏠 বাড়িতে আছে</div><div class="tb-sub">আগে ফিরলে এখান থেকে নিশ্চিত করুন</div></div>
+    <div class="tb-action" style="background:#faf8f2;border:1px solid #e2dbc7;border-radius:10px;font-size:16px;">🏠</div>
+  </div>
+
+  <div style="margin:14px 16px;background:#f7ecd6;border:1px solid #e6cf9e;border-radius:12px;padding:12px 14px;font-size:12px;color:#5c6f7a;line-height:1.6;">
+    💡 ছুটি শেষ হওয়ার তারিখের আগেই যদি কোনো ছাত্র হোস্টেলে ফিরে আসে, নিচের তালিকা থেকে তার নামের পাশে "✅ আজই ফিরে এসেছে" বাটনে চাপুন — সাথে সাথে সে "উপস্থিত" হিসেবে দেখাবে, ছুটির নির্ধারিত শেষ তারিখ পর্যন্ত অপেক্ষা করতে হবে না।
+  </div>
+
+  <div id="er-list"></div>
+
+  <div style="height:20px;"></div>
+
+  <div class="bottom-nav">
+    <div class="nav-item" onclick="goDashboard()"><div class="nav-icon">🏠</div><div class="nav-label">হোম</div></div>
+    <div class="nav-item" onclick="goStudents()"><div class="nav-icon">👨‍🎓</div><div class="nav-label">ছাত্র</div></div>
+    <div class="nav-item" onclick="goChecklist()"><div class="nav-icon">✅</div><div class="nav-label">চেকলিস্ট</div></div>
+    <div class="nav-item" onclick="goBehaviour()"><div class="nav-icon">⚖️</div><div class="nav-label">আচরণ</div></div>
+    <div class="nav-item" onclick="goReport()"><div class="nav-icon">📊</div><div class="nav-label">রিপোর্ট</div></div>
+  </div>
+</div>
+
+<script>
+function goEarlyReturn(){
+  const user = (typeof getSessionUser==='function') ? getSessionUser() : null;
+  if(!user || (user.role!=='admin' && user.role!=='super')){
+    alert('এই সুবিধা শুধুমাত্র অ্যাডমিন ও হোস্টেল সুপারের জন্য।');
+    return;
+  }
+  erRenderList();
+  showPage('early-return');
+}
+
+function erRenderList(){
+  const el = document.getElementById('er-list');
+  if(!el) return;
+  if(typeof lvRecords==='undefined' || typeof lvIsActiveToday!=='function'){ el.innerHTML=''; return; }
+  const activeRecs = lvRecords.filter(r=>lvIsActiveToday(r));
+  if(activeRecs.length===0){
+    el.innerHTML = '<div style="text-align:center;padding:40px 16px;color:#8b98a3"><div style="font-size:36px;margin-bottom:10px">🏠</div><div>বর্তমানে কেউ ছুটিতে/বাড়িতে নেই</div></div>';
+    return;
+  }
+  el.innerHTML = activeRecs.map(r=>`
+    <div class="lv-card">
+      <div class="lv-top">
+        <div class="lv-avatar">🏠</div>
+        <div class="lv-info">
+          <div class="lv-name" onclick="openStudentByName('${r.stuName.replace(/'/g,"\\'")}','early-return')">${r.stuName}</div>
+          <div class="lv-meta">${CLASS_BN[r.cls]||r.cls} শ্রেণী • ব্লক ${r.blk}</div>
+        </div>
+      </div>
+      <div class="lv-detail">
+        <div class="lv-row"><span>📅 ছুটি</span><span>${r.from} – ${r.to}</span></div>
+        <div class="lv-row"><span>📋 কারণ</span><span>${r.reason}</span></div>
+      </div>
+      <button onclick="erMarkReturned('${r.id}')" style="width:100%;padding:11px;background:linear-gradient(135deg,#2f9e5c,#3db56f);border:none;border-radius:10px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">✅ আজই ফিরে এসেছে — উপস্থিত করুন</button>
+    </div>`).join('');
+}
+
+function erMarkReturned(id){
+  const rec = lvRecords.find(r=>String(r.id)===String(id));
+  if(!rec) return;
+  if(!confirm(rec.stuName+' কি আজই ছুটি থেকে ফিরে এসেছে?\n\nনিশ্চিত করলে তাকে এখনই "উপস্থিত" হিসেবে দেখানো হবে।')) return;
+
+  const y = new Date(); y.setDate(y.getDate()-1);
+  const yISO = lvISO(y);
+  rec.toISO = yISO;
+  rec.to = lvFmtDate(y);
+  rec.returnedEarly = true;
+
+  if(typeof fbSet==='function') fbSet('leaveRecords/'+rec.id, rec);
+
+  erRenderList();
+  if(typeof renderDashboard==='function') renderDashboard();
+  if(typeof renderDashBlockCards==='function') renderDashBlockCards();
+  alert('✅ '+rec.stuName+' এখন থেকে "উপস্থিত" হিসেবে দেখানো হবে।');
+}
 </script>
 </body>
 </html>
