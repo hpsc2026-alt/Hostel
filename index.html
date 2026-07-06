@@ -1196,6 +1196,7 @@ function effectiveUsers(role){
 <div class="section-header">🏠 ব্লক অনুযায়ী ছাত্র তালিকা</div>
 <div id="dash-block-cards" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px 14px;"></div>
 <div id="dash-rank-widget" style="margin:0 16px 14px;"></div>
+<div id="dash-noncompliance-widget"></div>
 
 <!-- স্ট্যাটিস্টিক্স -->
 <div class="section-header">📊 সামগ্রিক অবস্থা</div>
@@ -4357,9 +4358,9 @@ const ROLE_CONFIG = {
       {icon:'👨‍🎓', label:'মোট ছাত্র', val:'—', badge:'সক্রিয়', cls:'sc-blue', nav:'goStudents', id:'stat-total-students'},
       {icon:'🏠', label:'মোট রুম', val:'—', badge:'২ ফ্লোর', cls:'sc-teal', nav:'goRooms', id:'stat-total-rooms'},
       {icon:'✅', label:'আজ উপস্থিত', val:'—', badge:'হোস্টেলে আছে', cls:'sc-green', nav:'goAttendance', id:'stat-present-today'},
-      {icon:'⚠️', label:'অ্যালার্ট', val:'৩', badge:'জরুরি', cls:'sc-red', nav:'goComplaintCenter'},
+      {icon:'⚠️', label:'অ্যালার্ট', val:'—', badge:'জরুরি', cls:'sc-red', nav:'goComplaintCenter', id:'stat-alert-count'},
       {icon:'🏥', label:'অসুস্থ', val:'—', badge:'চিকিৎসাধীন', cls:'sc-amber', nav:'goHealth', id:'stat-sick-count'},
-      {icon:'⚖️', label:'অভিযোগ', val:'১', badge:'আজকের', cls:'sc-purple', nav:'goComplaintCenter'},
+      {icon:'⚖️', label:'অভিযোগ', val:'—', badge:'আজকের', cls:'sc-purple', nav:'goComplaintCenter', id:'stat-complaint-count'},
       {icon:'🏠', label:'বাড়িতে আছে', val:'০', badge:'আগে ফিরলে ট্যাপ করুন', cls:'sc-amber', nav:'goEarlyReturn', id:'stat-home-count'},
     ],
     quickActions: [
@@ -4377,7 +4378,7 @@ const ROLE_CONFIG = {
       {icon:'👨‍🎓', label:'মোট ছাত্র', val:'—', badge:'সক্রিয়', cls:'sc-blue', nav:'goStudents', id:'stat-total-students'},
       {icon:'✅', label:'আজ উপস্থিত', val:'—', badge:'হোস্টেলে আছে', cls:'sc-green', nav:'goAttendance', id:'stat-present-today'},
       {icon:'🚪', label:'ছুটিতে', val:'—', badge:'বাড়িতে', cls:'sc-amber', nav:'goLeave', id:'stat-leave-count'},
-      {icon:'⚠️', label:'অ্যালার্ট', val:'৩', badge:'জরুরি', cls:'sc-red', nav:'goComplaintCenter'},
+      {icon:'⚠️', label:'অ্যালার্ট', val:'—', badge:'জরুরি', cls:'sc-red', nav:'goComplaintCenter', id:'stat-alert-count'},
       {icon:'🏥', label:'অসুস্থ', val:'—', badge:'চিকিৎসাধীন', cls:'sc-amber', nav:'goHealth', id:'stat-sick-count'},
       {icon:'✅', label:'চেকলিস্ট', val:'—', badge:'চলমান', cls:'sc-teal', nav:'goChecklist', id:'stat-checklist'},
       {icon:'🏠', label:'বাড়িতে আছে', val:'০', badge:'আগে ফিরলে ট্যাপ করুন', cls:'sc-amber', nav:'goEarlyReturn', id:'stat-home-count'},
@@ -4407,7 +4408,7 @@ const ROLE_CONFIG = {
       {icon:'🏥', label:'স্বাস্থ্য', onclick:'goHealth()'},
       {icon:'📊', label:'আমার রিপোর্ট', onclick:'goReport()'},
       {icon:'🏆', label:'আমার র‍্যাংকিং', onclick:'goStaffRanking()'},
-      {icon:'🚨', label:'অভিযোগ দিন', onclick:'goComplaintCenter()'},
+      {icon:'🚨', label:'অভিযোগ দিন', onclick:'goFileComplaint()'},
     ],
     showStaff: false,
   },
@@ -4700,6 +4701,18 @@ function renderDashboard(){
   const sickCountEl = document.getElementById('stat-sick-count');
   if(sickCountEl) sickCountEl.textContent = bnStat(sickCount);
 
+  const alertCountEl = document.getElementById('stat-alert-count');
+  if(alertCountEl && typeof ogGetComplaints==='function'){
+    const pendingComplaints = ogGetComplaints().filter(i=>!i.a.actionTaken && !i.a.resolved).length;
+    alertCountEl.textContent = bnStat(pendingComplaints);
+  }
+
+  const complaintCountEl = document.getElementById('stat-complaint-count');
+  if(complaintCountEl && typeof bhRecords!=='undefined'){
+    const todayComplaints = bhRecords.filter(r=>r.type==='minus' && (r.time==='এইমাত্র' || (r.time||'').includes('আজ'))).length;
+    complaintCountEl.textContent = bnStat(todayComplaints);
+  }
+
   const leaveCountEl = document.getElementById('stat-leave-count');
   if(leaveCountEl) leaveCountEl.textContent = bnStat(onLeaveTodayCount);
 
@@ -4805,6 +4818,7 @@ function renderDashboard(){
   // ব্লক কার্ড
   renderDashBlockCards();
   if(typeof rkRenderDashWidget==='function') rkRenderDashWidget();
+  if(typeof ncRenderDashWidget==='function') ncRenderDashWidget();
   // পরিচ্ছন্নতা ও সকালের পড়া রিপোর্ট
   renderCleanlinessDashReport(user);
   // অসুস্থতা ও ক্লাস ফাঁকি রিপোর্ট
@@ -5611,6 +5625,16 @@ function bhLoadHistoryFromFirebase(){
 const bnPts=n=>String(n).replace(/\d/g,x=>"০১২৩৪৫৬৭৮৯"[x]);
 
 function goBehaviour(){ bhPopulateStudents(); bhRender(); showPage("behaviour"); }
+
+// হাউস টিউটর/স্টাফ যখন নতুন অভিযোগ জানাতে চান — সরাসরি ফর্ম খুলে দেয়,
+// আগে এই বাটন শুধু রিভিউ-পেজে (অভিযোগ কেন্দ্র) নিয়ে যেত, নতুন অভিযোগ লেখার উপায় ছিল না।
+function goFileComplaint(){
+  bhPopulateStudents();
+  bhRender();
+  showPage("behaviour");
+  document.getElementById("bh-form").classList.add("show");
+  bhSelectPts("minus");
+}
 
 function bhPopulateStudents(){
   if(allStudents.length===0) assignRooms();
@@ -9377,6 +9401,211 @@ async function rkRenderDashWidget(){
       <div onclick="goRanking()" style="text-align:center;margin-top:8px;padding-top:8px;border-top:1px solid #e2dbc720;font-size:12px;font-weight:700;color:#2b7fd6;cursor:pointer;">📋 সম্পূর্ণ তালিকা দেখুন</div>
     </div>`;
   }catch(e){ console.error("dash rank widget:", e); }
+}
+</script>
+
+<!-- ══ PAGE: আজকের অসম্পূর্ণ কাজ — সব ব্লক একসাথে (হাউজ টিউটর ও হোস্টেল সুপারের জন্য) ══ -->
+<style>
+.nc-hero{background:linear-gradient(135deg,#f9e3e3,#faf8f2);padding:16px;margin:14px 16px;border-radius:14px;border:1px solid #f0caca;}
+.nc-hero-title{font-size:14px;font-weight:700;color:#24313b;margin-bottom:3px;}
+.nc-hero-sub{font-size:11px;color:#c94545;}
+.nc-stat-row{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:10px;}
+.nc-stat{background:#ffffff;border-radius:10px;padding:10px 8px;text-align:center;}
+.nc-stat-num{font-size:20px;font-weight:700;color:#c94545;}
+.nc-stat-lbl{font-size:10px;color:#5c6f7a;margin-top:2px;}
+.nc-block-hd{margin:14px 16px 8px;padding:9px 13px;border-radius:12px;background:#ffffff;border:1px solid #e2dbc7;font-size:12px;font-weight:700;color:#24313b;}
+.nc-list-wrap{margin:0 16px 14px;border-radius:12px;overflow:hidden;border:1px solid #e2dbc7;}
+.nc-row{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #e2dbc718;background:#ffffff;cursor:pointer;transition:background .15s;}
+.nc-row:last-child{border-bottom:none;}
+.nc-row:active{background:#eef1f4;}
+.nc-row-name{flex:1;}
+.nc-row-name-txt{font-size:13px;font-weight:600;color:#24313b;}
+.nc-row-meta{font-size:11px;color:#5c6f7a;margin-top:1px;}
+.nc-row-issues{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;}
+.nc-tag{font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:#f9e3e3;color:#c94545;white-space:nowrap;}
+.nc-row-count{font-size:14px;font-weight:700;color:#c94545;flex-shrink:0;}
+.nc-empty{padding:36px 16px;text-align:center;color:#5c6f7a;font-size:13px;}
+.nc-widget{margin:0 16px 14px;background:#ffffff;border:1px solid #f0caca;border-radius:13px;padding:12px 14px;cursor:pointer;}
+.nc-widget-top{display:flex;align-items:center;gap:8px;}
+.nc-widget-title{flex:1;font-size:12px;font-weight:700;color:#24313b;}
+.nc-widget-badge{font-size:13px;font-weight:700;color:#ffffff;background:#c94545;padding:2px 10px;border-radius:20px;}
+.nc-widget-sub{font-size:11px;color:#5c6f7a;margin-top:6px;}
+</style>
+
+<div id="page-noncompliance" class="page" style="background:#faf8f2;min-height:100vh;padding-bottom:80px;">
+  <div class="topbar">
+    <div class="tb-back" onclick="goDashboard()">←</div>
+    <div class="tb-info"><div class="tb-title">🚩 আজকের অসম্পূর্ণ কাজ — সব ব্লক</div><div class="tb-sub" id="nc-date-sub">লোড হচ্ছে...</div></div>
+    <div class="tb-action" style="background:#faf8f2;border:1px solid #e2dbc7;border-radius:10px;font-size:16px;" onclick="ncRender()">🔄</div>
+  </div>
+
+  <div class="nc-hero">
+    <div class="nc-hero-title">🚩 আজ কারা যথাযথভাবে দায়িত্ব পালন করেনি</div>
+    <div class="nc-hero-sub">নামাজ, পরিচ্ছন্নতা, পড়া, ইউনিফর্ম ও আরবি ক্লাস — সব ক্যাটাগরি মিলিয়ে, সব ব্লক একসাথে</div>
+    <div class="nc-stat-row">
+      <div class="nc-stat"><div class="nc-stat-num" id="nc-stat-students">০</div><div class="nc-stat-lbl">মোট শিক্ষার্থী</div></div>
+      <div class="nc-stat"><div class="nc-stat-num" id="nc-stat-issues">০</div><div class="nc-stat-lbl">মোট ত্রুটি</div></div>
+    </div>
+  </div>
+
+  <div id="nc-block-sections"></div>
+
+  <div class="bottom-nav">
+    <div class="nav-item" onclick="goDashboard()"><div class="nav-icon">🏠</div><div class="nav-label">হোম</div></div>
+    <div class="nav-item" onclick="goStudents()"><div class="nav-icon">👨‍🎓</div><div class="nav-label">ছাত্র</div></div>
+    <div class="nav-item" onclick="goChecklist()"><div class="nav-icon">✅</div><div class="nav-label">চেকলিস্ট</div></div>
+    <div class="nav-item" onclick="goBehaviour()"><div class="nav-icon">⚖️</div><div class="nav-label">আচরণ</div></div>
+    <div class="nav-item" onclick="goReport()"><div class="nav-icon">📊</div><div class="nav-label">রিপোর্ট</div></div>
+  </div>
+</div>
+
+<script>
+const bnNC=n=>String(n).replace(/\d/g,x=>"০১২৩৪৫৬৭৮৯"[x]);
+
+// আজকের নির্দিষ্ট একটি ফায়ারবেস পাথ থেকে শুধু আজকের এন্ট্রি একবার পড়া
+async function ncFetchToday(path){
+  const today = fbTodayKey();
+  const range = await fbGetRange(path, today, today);
+  return (range && range[today]) || {};
+}
+
+// সব ক্যাটাগরি থেকে আজকের নেতিবাচক (অসম্পূর্ণ/ত্রুটিপূর্ণ) এন্ট্রি একত্র করে প্রতিটি ছাত্রের জন্য ইস্যু-লিস্ট বানানো
+async function ncBuildTodayIssues(){
+  if(allStudents.length===0) assignRooms();
+
+  const [cc, uf, ns, zl, id, es, nr, ac] = await Promise.all([
+    ncFetchToday('cleanliness'),
+    ncFetchToday('uniform'),
+    ncFetchToday('namaz'),
+    ncFetchToday('zohrLunch'),
+    ncFetchToday('ishaDinner'),
+    ncFetchToday('eveningStudy'),
+    ncFetchToday('nightStudyRest'),
+    ncFetchToday('arabicClass'),
+  ]);
+  const nsF = ns['ফজর'] || {};
+
+  // ছুটিতে থাকা ছাত্রদের এই হিসাব থেকে বাদ দেওয়া হয় (অন্যান্য মডিউলের মতোই)
+  const onLeave = new Set();
+  if(typeof lvRecords!=='undefined' && typeof lvIsActiveToday==='function'){
+    allStudents.forEach(s=>{ if(lvRecords.some(r=>r.stuSerial===s.serial && lvIsActiveToday(r))) onLeave.add(s.serial); });
+  }
+
+  const result = [];
+  allStudents.forEach(s=>{
+    if(onLeave.has(s.serial)) return;
+    const sid = s.serial;
+    const issues = [];
+
+    const ccm = cc[sid];
+    if(ccm){
+      if(ccm.hygiene==='unclean') issues.push('🧺 পরিচ্ছন্ন ছিল না');
+      if(ccm.study==='not_studying') issues.push('📴 সকালে পড়ছিল না');
+    }
+
+    const ufm = uf[sid];
+    if(ufm==='no_uniform') issues.push('👔 ইউনিফর্ম ছাড়া ক্লাসে গেছে');
+    if(ufm==='absent_class') issues.push('🚫 ক্লাসে অনুপস্থিত');
+
+    const nsm = nsF[sid];
+    if(nsm==='late') issues.push('⏰ ফজর নামাজে যথাসময়ে আসেনি');
+    if(nsm==='qaza') issues.push('❌ ফজর নামাজ কাজা হয়েছে');
+
+    const zlm = zl[sid]; const zlPrayer = zlm && typeof zlm==='object' ? zlm.prayer : null;
+    if(zlPrayer==='no_jamaat') issues.push('🚶 জোহর জামাত পায়নি');
+    if(zlPrayer==='absent_zl') issues.push('❌ জোহর নামাজে অনুপস্থিত');
+
+    const idm = id[sid]; const idPrayer = idm && typeof idm==='object' ? idm.prayer : null;
+    if(idPrayer==='no_jamaat') issues.push('🚶 এশা জামাত পায়নি');
+    if(idPrayer==='absent_id') issues.push('❌ এশা নামাজে অনুপস্থিত');
+
+    const esm = es[sid];
+    if(esm==='improper') issues.push('🟡 সন্ধ্যায় ঠিকমতো পড়েনি');
+    if(esm==='none') issues.push('❌ সন্ধ্যায় মোটেই পড়েনি');
+
+    const nrm = nr[sid];
+    if(nrm){
+      if(nrm.notread) issues.push('📴 রাতে পড়েনি');
+      if(nrm.notslept) issues.push('🌙 রাতে যথাসময়ে ঘুমায়নি');
+    }
+
+    const acm = ac[sid];
+    if(acm){
+      if(acm.attendance==='absent') issues.push('❌ আরবি ক্লাসে অনুপস্থিত');
+      else if(acm.attendance==='partial') issues.push('🟡 আরবি ক্লাসে আংশিক উপস্থিত');
+      if(acm.lesson==='lesson_not_done') issues.push('📕 আরবি পড়া দেয়নি');
+    }
+
+    if(issues.length>0) result.push({...s, issues});
+  });
+
+  result.sort((a,b)=> b.issues.length-a.issues.length);
+  return result;
+}
+
+function goNonCompliance(){ ncRender(); showPage('noncompliance'); }
+
+async function ncRender(){
+  const d=new Date();
+  const months=["জানুয়ারি","ফেব্রুয়ারি","মার্চ","এপ্রিল","মে","জুন","জুলাই","আগস্ট","সেপ্টেম্বর","অক্টোবর","নভেম্বর","ডিসেম্বর"];
+  const days=["রবিবার","সোমবার","মঙ্গলবার","বুধবার","বৃহস্পতিবার","শুক্রবার","শনিবার"];
+  document.getElementById('nc-date-sub').textContent = days[d.getDay()]+", "+bnNC(d.getDate())+" "+months[d.getMonth()];
+
+  const wrap = document.getElementById('nc-block-sections');
+  wrap.innerHTML = '<div class="nc-empty">⏳ লোড হচ্ছে...</div>';
+
+  const rows = await ncBuildTodayIssues();
+  const totalIssues = rows.reduce((sum,r)=>sum+r.issues.length,0);
+  document.getElementById('nc-stat-students').textContent = bnNC(rows.length);
+  document.getElementById('nc-stat-issues').textContent = bnNC(totalIssues);
+
+  if(rows.length===0){
+    wrap.innerHTML = '<div class="nc-empty">🎉 আজ পর্যন্ত সব ব্লকের সব ছাত্র যথাযথভাবে দায়িত্ব পালন করেছে — কোনো ত্রুটি নেই।</div>';
+    return;
+  }
+
+  const blkColors={A:'#2f9e5c',B:'#8258c9',C:'#1f9797',D:'#a9822f'};
+  let html='';
+  ['A','B','C','D'].forEach(blk=>{
+    const blkRows = rows.filter(r=>(r.block||r.blk)===blk);
+    if(blkRows.length===0) return;
+    html += `<div class="nc-block-hd" style="border-left:4px solid ${blkColors[blk]}">🏠 ব্লক ${blk} — ${bnNC(blkRows.length)} জন ত্রুটিযুক্ত</div>`;
+    html += `<div class="nc-list-wrap">${blkRows.map(s=>`
+      <div class="nc-row" onclick="showStudentProfile(${s.serial},'noncompliance')">
+        <div class="nc-row-name">
+          <div class="nc-row-name-txt">${s.name}</div>
+          <div class="nc-row-meta">${CLASS_BN[s.cls]} • রুম ${s.room}</div>
+          <div class="nc-row-issues">${s.issues.map(t=>`<span class="nc-tag">${t}</span>`).join('')}</div>
+        </div>
+        <div class="nc-row-count">${bnNC(s.issues.length)}</div>
+      </div>`).join('')}</div>`;
+  });
+  wrap.innerHTML = html;
+}
+
+// ড্যাশবোর্ডে ছোট উইজেট — হাউজ টিউটর ও হোস্টেল সুপার উভয়েই দেখতে পাবেন (সব ব্লক মিলিয়ে)
+async function ncRenderDashWidget(){
+  const el=document.getElementById('dash-noncompliance-widget');
+  if(!el) return;
+  try{
+    const rows = await ncBuildTodayIssues();
+    if(rows.length===0){
+      el.innerHTML = `<div class="nc-widget" onclick="goNonCompliance()">
+        <div class="nc-widget-top"><span style="font-size:16px;">🎉</span><span class="nc-widget-title">আজকের অসম্পূর্ণ কাজ — সব ব্লক</span></div>
+        <div class="nc-widget-sub">আজ পর্যন্ত কোনো ত্রুটি পাওয়া যায়নি।</div>
+      </div>`;
+      return;
+    }
+    const names = rows.slice(0,3).map(s=>s.name.split(' ')[0]).join(', ');
+    el.innerHTML = `<div class="nc-widget" onclick="goNonCompliance()">
+      <div class="nc-widget-top">
+        <span style="font-size:16px;">🚩</span>
+        <span class="nc-widget-title">আজকের অসম্পূর্ণ কাজ — সব ব্লক</span>
+        <span class="nc-widget-badge">${bnNC(rows.length)}</span>
+      </div>
+      <div class="nc-widget-sub">${names}${rows.length>3?' সহ আরও '+bnNC(rows.length-3)+' জন':''} — বিস্তারিত দেখতে ট্যাপ করুন</div>
+    </div>`;
+  }catch(e){ console.error('nc dash widget:', e); }
 }
 </script>
 
