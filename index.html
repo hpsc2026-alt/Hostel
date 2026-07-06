@@ -1246,6 +1246,9 @@ function effectiveUsers(role){
 <div class="section-header">⚡ দ্রুত কাজ</div>
 <div class="quick-actions" id="quickActions"></div>
 
+<!-- টেস্ট ডেটা রিসেট (শুধু অ্যাডমিনের জন্য) -->
+<div id="dashResetSection"></div>
+
 <!-- বটম নেভ -->
 <div class="bottom-nav">
   <div class="nav-item active" onclick="goDashboard()">
@@ -3929,7 +3932,7 @@ function scShowReport(){
     <div class="topbar-title">👨‍🎓 ছাত্র তালিকা</div>
     <div class="topbar-sub" id="topbarSub">মোট ১০২ জন আবাসিক ছাত্র</div>
   </div>
-  <div class="add-btn" title="নতুন ছাত্র যোগ করুন">+</div>
+  <div class="add-btn" title="নতুন ছাত্র যোগ করুন" onclick="stuOpenAddModal()">+</div>
 </div>
 
 <!-- সার্চ -->
@@ -3969,6 +3972,45 @@ function scShowReport(){
     <div class="modal-sub" id="modalClass">—</div>
     <div id="modalBody"></div>
     <button class="close-btn" onclick="closeModal()">বন্ধ করুন</button>
+  </div>
+</div>
+
+<!-- নতুন ছাত্র যোগ করার মডাল -->
+<div class="modal-overlay hide" id="stuAddOverlay" onclick="if(event.target===this) stuCloseAddModal()" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9000;display:flex;align-items:flex-end;">
+  <div style="background:#ffffff;width:100%;border-radius:20px 20px 0 0;padding:20px;font-family:'Hind Siliguri',sans-serif;">
+    <div style="width:40px;height:4px;background:#e2dbc7;border-radius:2px;margin:0 auto 16px;"></div>
+    <div style="font-size:15px;font-weight:700;color:#24313b;margin-bottom:14px;">➕ নতুন ছাত্র ভর্তি করুন</div>
+
+    <div style="margin-bottom:12px;">
+      <label style="font-size:11px;font-weight:700;color:#a9822f;display:block;margin-bottom:6px;">👦 ছাত্রের নাম</label>
+      <input id="stuAddName" type="text" placeholder="পুরো নাম লিখুন" style="width:100%;padding:11px 12px;background:#faf8f2;border:1.5px solid #e2dbc7;border-radius:10px;color:#24313b;font-size:13px;outline:none;font-family:'Hind Siliguri',sans-serif;">
+    </div>
+
+    <div style="margin-bottom:8px;">
+      <label style="font-size:11px;font-weight:700;color:#a9822f;display:block;margin-bottom:6px;">🎓 শ্রেণী</label>
+      <select id="stuAddClass" onchange="stuAddUpdateBlockPreview()" style="width:100%;padding:11px 12px;background:#faf8f2;border:1.5px solid #e2dbc7;border-radius:10px;color:#24313b;font-size:13px;outline:none;font-family:'Hind Siliguri',sans-serif;">
+        <option value="IV">চতুর্থ শ্রেণী</option>
+        <option value="V">পঞ্চম শ্রেণী</option>
+        <option value="VI">ষষ্ঠ শ্রেণী</option>
+        <option value="VII">সপ্তম শ্রেণী</option>
+        <option value="VIII">অষ্টম শ্রেণী</option>
+        <option value="IX">নবম শ্রেণী</option>
+        <option value="X">দশম শ্রেণী</option>
+      </select>
+    </div>
+
+    <div id="stuAddBlockPreview" style="font-size:12px;color:#5c6f7a;background:#f7ecd6;border:1px solid #e6cf9e;border-radius:9px;padding:9px 12px;margin-bottom:16px;">
+      এই ছাত্র স্বয়ংক্রিয়ভাবে <b>ব্লক A</b>-এ যুক্ত হবে
+    </div>
+
+    <div style="display:flex;gap:10px;">
+      <button onclick="stuAddSubmit()" style="flex:1;padding:12px;background:linear-gradient(135deg,#a9822f,#c7a04a);border:none;border-radius:11px;color:#faf8f2;font-size:13px;font-weight:700;cursor:pointer;">✅ ভর্তি করুন</button>
+      <button onclick="stuCloseAddModal()" style="flex:1;padding:12px;background:#faf8f2;border:1px solid #e2dbc7;border-radius:11px;color:#5c6f7a;font-size:13px;cursor:pointer;">বাতিল</button>
+    </div>
+
+    <div style="font-size:11px;color:#8b98a3;margin-top:12px;line-height:1.5;">
+      💡 নির্দিষ্ট কোনো রুমে বসাতে চাইলে, ভর্তির পর "ব্লক অনুযায়ী ছাত্র তালিকা" থেকে সেই ব্লকে গিয়ে খালি বেডে এই ছাত্রের নাম বেছে নিন।
+    </div>
   </div>
 </div>
 
@@ -4162,12 +4204,12 @@ const ROLE_CONFIG = {
   admin: {
     banner: {cls:'rb-admin', icon:'👑', title:'সুপার অ্যাডমিন প্যানেল', desc:'সমস্ত হোস্টেল কার্যক্রম পর্যবেক্ষণ করুন।'},
     stats: [
-      {icon:'👨‍🎓', label:'মোট ছাত্র', val:'১০২', badge:'সক্রিয়', cls:'sc-blue'},
-      {icon:'🏠', label:'মোট রুম', val:'২৫', badge:'২ ফ্লোর', cls:'sc-teal'},
-      {icon:'✅', label:'আজ উপস্থিত', val:'৯৮', badge:'৯৬%', cls:'sc-green'},
-      {icon:'⚠️', label:'অ্যালার্ট', val:'৩', badge:'জরুরি', cls:'sc-red'},
-      {icon:'🏥', label:'অসুস্থ', val:'২', badge:'চিকিৎসাধীন', cls:'sc-amber'},
-      {icon:'⚖️', label:'অভিযোগ', val:'১', badge:'আজকের', cls:'sc-purple'},
+      {icon:'👨‍🎓', label:'মোট ছাত্র', val:'১০২', badge:'সক্রিয়', cls:'sc-blue', nav:'goStudents'},
+      {icon:'🏠', label:'মোট রুম', val:'২৫', badge:'২ ফ্লোর', cls:'sc-teal', nav:'goRooms'},
+      {icon:'✅', label:'আজ উপস্থিত', val:'৯৮', badge:'৯৬%', cls:'sc-green', nav:'goAttendance'},
+      {icon:'⚠️', label:'অ্যালার্ট', val:'৩', badge:'জরুরি', cls:'sc-red', nav:'goComplaintCenter'},
+      {icon:'🏥', label:'অসুস্থ', val:'২', badge:'চিকিৎসাধীন', cls:'sc-amber', nav:'goHealth'},
+      {icon:'⚖️', label:'অভিযোগ', val:'১', badge:'আজকের', cls:'sc-purple', nav:'goComplaintCenter'},
     ],
     quickActions: [
       {icon:'📊', label:'সম্পূর্ণ রিপোর্ট', onclick:'goReport()'},
@@ -4181,12 +4223,12 @@ const ROLE_CONFIG = {
   super: {
     banner: {cls:'rb-super', icon:'🏆', label:'হোস্টেল সুপার', title:'হোস্টেল সুপার ড্যাশবোর্ড', desc:'সামগ্রিক হোস্টেল পরিচালনা ও পর্যবেক্ষণ।'},
     stats: [
-      {icon:'👨‍🎓', label:'মোট ছাত্র', val:'১০২', badge:'সক্রিয়', cls:'sc-blue'},
-      {icon:'✅', label:'আজ উপস্থিত', val:'৯৮', badge:'৯৬%', cls:'sc-green'},
-      {icon:'🚪', label:'ছুটিতে', val:'৪', badge:'বাড়িতে', cls:'sc-amber'},
-      {icon:'⚠️', label:'অ্যালার্ট', val:'৩', badge:'জরুরি', cls:'sc-red'},
-      {icon:'🏥', label:'অসুস্থ', val:'২', badge:'চিকিৎসাধীন', cls:'sc-amber'},
-      {icon:'✅', label:'চেকলিস্ট', val:'৫/১২', badge:'চলমান', cls:'sc-teal'},
+      {icon:'👨‍🎓', label:'মোট ছাত্র', val:'১০২', badge:'সক্রিয়', cls:'sc-blue', nav:'goStudents'},
+      {icon:'✅', label:'আজ উপস্থিত', val:'৯৮', badge:'৯৬%', cls:'sc-green', nav:'goAttendance'},
+      {icon:'🚪', label:'ছুটিতে', val:'৪', badge:'বাড়িতে', cls:'sc-amber', nav:'goLeave'},
+      {icon:'⚠️', label:'অ্যালার্ট', val:'৩', badge:'জরুরি', cls:'sc-red', nav:'goComplaintCenter'},
+      {icon:'🏥', label:'অসুস্থ', val:'২', badge:'চিকিৎসাধীন', cls:'sc-amber', nav:'goHealth'},
+      {icon:'✅', label:'চেকলিস্ট', val:'৫/১২', badge:'চলমান', cls:'sc-teal', nav:'goChecklist'},
     ],
     quickActions: [
       {icon:'🚨', label:'অভিযোগ কেন্দ্র', onclick:'goComplaintCenter()'},
@@ -4200,10 +4242,10 @@ const ROLE_CONFIG = {
   asst: {
     banner: {cls:'rb-asst', icon:'🌙', title:'হাউজ টিউটর ড্যাশবোর্ড', desc:'আপনার ব্লকের ছাত্র, দৈনন্দিন রুটিন ও অভিযোগ — এখানেই সব।'},
     stats: [
-      {icon:'✅', label:'আমার চেকলিস্ট', val:'৫/১২', badge:'চলমান', cls:'sc-teal'},
-      {icon:'👨‍🎓', label:'আমার ছাত্র', val:'২৬', badge:'রুম ২০১-২১৩', cls:'sc-blue'},
-      {icon:'⚠️', label:'পেন্ডিং', val:'২', badge:'জরুরি', cls:'sc-red'},
-      {icon:'🏥', label:'অসুস্থ', val:'১', badge:'আমার ফ্লোর', cls:'sc-amber'},
+      {icon:'✅', label:'আমার চেকলিস্ট', val:'৫/১২', badge:'চলমান', cls:'sc-teal', nav:'goChecklist'},
+      {icon:'👨‍🎓', label:'আমার ছাত্র', val:'২৬', badge:'রুম ২০১-২১৩', cls:'sc-blue', nav:'goStudents'},
+      {icon:'⚠️', label:'পেন্ডিং', val:'২', badge:'জরুরি', cls:'sc-red', nav:'goChecklist'},
+      {icon:'🏥', label:'অসুস্থ', val:'১', badge:'আমার ফ্লোর', cls:'sc-amber', nav:'goHealth'},
     ],
     quickActions: [
       {icon:'✅', label:'দৈনন্দিন রুটিন', onclick:'goChecklist()'},
@@ -4220,10 +4262,10 @@ const ROLE_CONFIG = {
   arabic: {
     banner: {cls:'rb-arabic', icon:'📖', title:'আরবি শিক্ষক ড্যাশবোর্ড', desc:'আজকের আরবি ক্লাসের হাজিরা ও পড়া নিশ্চিত করুন।'},
     stats: [
-      {icon:'📖', label:'আরবি ক্লাস', val:'০/০', badge:'আজকের', cls:'sc-teal'},
-      {icon:'👨‍🎓', label:'আমার ছাত্র', val:'—', badge:'নির্ধারিত', cls:'sc-blue'},
-      {icon:'✅', label:'পড়া দিয়েছে', val:'০', badge:'আজকের', cls:'sc-green'},
-      {icon:'⚠️', label:'পড়া দেয়নি', val:'০', badge:'আজকের', cls:'sc-red'},
+      {icon:'📖', label:'আরবি ক্লাস', val:'০/০', badge:'আজকের', cls:'sc-teal', nav:'acOpenOptions'},
+      {icon:'👨‍🎓', label:'আমার ছাত্র', val:'—', badge:'নির্ধারিত', cls:'sc-blue', nav:'goStudents'},
+      {icon:'✅', label:'পড়া দিয়েছে', val:'০', badge:'আজকের', cls:'sc-green', nav:'acShowReport'},
+      {icon:'⚠️', label:'পড়া দেয়নি', val:'০', badge:'আজকের', cls:'sc-red', nav:'acShowReport'},
     ],
     quickActions: [
       {icon:'📖', label:'আরবি ক্লাস হাজিরা', onclick:'acOpenOptions()'},
@@ -4333,7 +4375,7 @@ function renderDashboard(){
   // স্ট্যাটস
   const sg = document.getElementById('statsGrid');
   sg.innerHTML = cfg.stats.map((s,i)=>`
-    <div class="stat-card ${s.cls}" style="animation-delay:${0.05+i*0.05}s">
+    <div class="stat-card ${s.cls}" style="animation-delay:${0.05+i*0.05}s;${s.nav?'cursor:pointer;':''}" ${s.nav?`onclick="if(typeof ${s.nav}==='function') ${s.nav}();"`:''}>
       <div class="stat-icon">${s.icon}</div>
       <div class="stat-num">${s.val}</div>
       <div class="stat-label">${s.label}</div>
@@ -4541,6 +4583,18 @@ function renderDashboard(){
   // পরিদর্শন প্রতিবেদন রিমাইন্ডার (শুধু সুপার ও অ্যাডমিনের জন্য)
   if(typeof obRenderReminder==='function') obRenderReminder(user);
   if(typeof ogRenderReminder==='function') ogRenderReminder(user);
+
+  // টেস্ট ডেটা রিসেট বাটন (শুধু অ্যাডমিন)
+  const resetEl = document.getElementById('dashResetSection');
+  if(resetEl){
+    if(user.role==='admin'){
+      resetEl.innerHTML = `<div style="margin:6px 16px 16px;text-align:center;">
+        <button onclick="clearAllTestData()" style="background:#faf8f2;border:1px solid #f0caca;color:#c94545;font-size:12px;font-weight:700;padding:9px 16px;border-radius:20px;cursor:pointer;">🗑️ টেস্ট ডেটা রিসেট করুন</button>
+      </div>`;
+    } else {
+      resetEl.innerHTML = '';
+    }
+  }
 
   // নোটিফিকেশন ডট
   if(ALERTS.length > 0) document.getElementById('notifDot').style.display='block';
@@ -4782,6 +4836,72 @@ assignRooms();
 if(typeof bhLoadHistoryFromFirebase==="function") bhLoadHistoryFromFirebase();
 if(typeof srLoadTimelyFromFirebase==="function") srLoadTimelyFromFirebase();
 if(typeof ogLoadFromFirebase==="function") ogLoadFromFirebase();
+
+// ── নতুন ছাত্র ভর্তি / বিদায়ী ছাত্র ডিলিট — Firebase-এ সিঙ্ক থাকে ──
+const CLASS_BN_LABEL = {'IV':'চতুর্থ','V':'পঞ্চম','VI':'ষষ্ঠ','VII':'সপ্তম','VIII':'অষ্টম','IX':'নবম','X':'দশম'};
+
+function stuOpenAddModal(){
+  const overlay = document.getElementById('stuAddOverlay');
+  if(!overlay) return;
+  document.getElementById('stuAddName').value = '';
+  document.getElementById('stuAddClass').value = 'IV';
+  stuAddUpdateBlockPreview();
+  overlay.classList.remove('hide');
+  overlay.style.display = 'flex';
+}
+function stuCloseAddModal(){
+  const overlay = document.getElementById('stuAddOverlay');
+  if(overlay){ overlay.classList.add('hide'); overlay.style.display = 'none'; }
+}
+function stuAddUpdateBlockPreview(){
+  const cls = document.getElementById('stuAddClass').value;
+  const blk = getBlock(cls);
+  const el = document.getElementById('stuAddBlockPreview');
+  if(el) el.innerHTML = `এই ছাত্র স্বয়ংক্রিয়ভাবে <b>ব্লক ${blk}</b>-এ যুক্ত হবে (${CLASS_BN_LABEL[cls]} শ্রেণী অনুযায়ী)`;
+}
+function stuAddSubmit(){
+  const name = document.getElementById('stuAddName').value.trim();
+  const cls = document.getElementById('stuAddClass').value;
+  if(!name){ alert('ছাত্রের নাম লিখুন'); return; }
+  if(!STUDENTS_BY_CLASS[cls]) STUDENTS_BY_CLASS[cls] = [];
+  STUDENTS_BY_CLASS[cls].push(name);
+  assignRooms();
+  if(typeof fbSet==='function') fbSet('studentRoster', STUDENTS_BY_CLASS);
+  stuCloseAddModal();
+  if(typeof render==='function') render();
+  if(typeof renderDashBlockCards==='function') renderDashBlockCards();
+  alert('✅ '+name+' — ব্লক '+getBlock(cls)+'-এ ভর্তি সম্পন্ন হয়েছে।\n\nনির্দিষ্ট রুমে বসাতে চাইলে "ব্লক অনুযায়ী ছাত্র তালিকা" থেকে সেই ব্লকে গিয়ে খালি বেডে এই নাম বেছে নিন।');
+}
+
+// ছাত্র ডিলিট (চলে যাওয়া ছাত্র) — শুধু অ্যাডমিন/সুপার
+function stuDeleteStudent(serial){
+  const user = (typeof getSessionUser==='function') ? getSessionUser() : null;
+  if(!user || (user.role!=='admin' && user.role!=='super')){
+    alert('ছাত্র ডিলিট করার অনুমতি শুধু অ্যাডমিন ও হোস্টেল সুপারের আছে।');
+    return;
+  }
+  const s = allStudents.find(x=>x.serial===serial);
+  if(!s) return;
+  if(!confirm('আপনি কি নিশ্চিত যে "'+s.name+'"-কে ছাত্র তালিকা থেকে স্থায়ীভাবে মুছে ফেলতে চান?\n\nএই কাজ আর ফিরিয়ে আনা যাবে না।')) return;
+
+  const arr = STUDENTS_BY_CLASS[s.cls] || [];
+  const idx = arr.indexOf(s.name);
+  if(idx > -1) arr.splice(idx, 1);
+
+  // রুম বণ্টন থেকেও নাম মুছে ফেলা
+  if(typeof BR_ROOM_DATA !== 'undefined'){
+    Object.keys(BR_ROOM_DATA).forEach(roomNo=>{
+      BR_ROOM_DATA[roomNo] = (BR_ROOM_DATA[roomNo]||[]).map(n => n===s.name ? "" : n);
+    });
+    if(typeof fbSet==='function') fbSet('roomData', BR_ROOM_DATA);
+  }
+
+  assignRooms();
+  if(typeof fbSet==='function') fbSet('studentRoster', STUDENTS_BY_CLASS);
+  if(typeof renderDashBlockCards==='function') renderDashBlockCards();
+  alert('✅ "'+s.name+'"-কে ছাত্র তালিকা থেকে মুছে ফেলা হয়েছে।');
+  if(typeof goStudents==='function') goStudents(); else if(typeof render==='function') render();
+}
 
 let currentFilter = 'all';
 let searchQuery = '';
@@ -6881,6 +7001,9 @@ function showStaffProfile(staffId, fromPage){
     </div>
   </div>
 
+  <!-- বিদায়ী ছাত্র ডিলিট (শুধু অ্যাডমিন/সুপার) -->
+  <div id="stup-delete-zone"></div>
+
   <div class="bottom-nav">
     <div class="nav-item" onclick="goDashboard()"><div class="nav-icon">🏠</div><div class="nav-label">হোম</div></div>
     <div class="nav-item" onclick="goStudents()"><div class="nav-icon">👨‍🎓</div><div class="nav-label">ছাত্র</div></div>
@@ -7163,6 +7286,19 @@ function showStudentProfile(serial, fromPage){
 
   // টাকা পাওনা
   stupDuesRender(s.serial);
+
+  // বিদায়ী ছাত্র ডিলিট (শুধু অ্যাডমিন/সুপার দেখতে পাবেন)
+  const delZone = document.getElementById("stup-delete-zone");
+  if(delZone){
+    const sessUser = (typeof getSessionUser==="function") ? getSessionUser() : null;
+    if(sessUser && (sessUser.role==="admin" || sessUser.role==="super")){
+      delZone.innerHTML = `<div style="margin:0 16px 16px;text-align:center;">
+        <button onclick="stuDeleteStudent(${s.serial})" style="background:#faf8f2;border:1px solid #f0caca;color:#c94545;font-size:12px;font-weight:700;padding:9px 16px;border-radius:20px;cursor:pointer;">🗑️ এই ছাত্রকে তালিকা থেকে মুছে ফেলুন (চলে গেছে)</button>
+      </div>`;
+    } else {
+      delZone.innerHTML = "";
+    }
+  }
 
   showPage("student-profile");
 }
@@ -9034,23 +9170,24 @@ async function rkGetStudentRanks(serial){
   };
 }
 
-// ড্যাশবোর্ডে এই মাসের সেরা ৩ জন দেখানো (ছোট উইজেট)
+// ড্যাশবোর্ডে শিক্ষার্থী র‍্যাংকিং (সেরা ৫) দেখানো (ছোট উইজেট)
 async function rkRenderDashWidget(){
   const el=document.getElementById("dash-rank-widget");
   if(!el) return;
   try{
     const rows=await rkBuildScoresReal("month");
-    const top3=rows.slice(0,3);
-    if(top3.length===0){ el.innerHTML=""; return; }
-    const medals=["🥇","🥈","🥉"];
-    el.innerHTML=`<div style="background:#ffffff;border:1px solid #e2dbc7;border-radius:13px;padding:12px 14px;cursor:pointer;" onclick="goRanking()">
-      <div style="font-size:12px;font-weight:700;color:#24313b;margin-bottom:8px;">🏆 এই মাসের সেরা ৩ (ট্যাপ করে সম্পূর্ণ র‍্যাংকিং দেখুন)</div>
-      ${top3.map((s,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
-        <span style="font-size:15px;">${medals[i]}</span>
+    const top5=rows.slice(0,5);
+    if(top5.length===0){ el.innerHTML=""; return; }
+    const medals=["🥇","🥈","🥉","৪","৫"];
+    el.innerHTML=`<div style="background:#ffffff;border:1px solid #e2dbc7;border-radius:13px;padding:12px 14px;">
+      <div style="font-size:12px;font-weight:700;color:#24313b;margin-bottom:8px;cursor:pointer;" onclick="goRanking()">🏆 শিক্ষার্থী র‍্যাংকিং</div>
+      ${top5.map((s,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;" onclick="goRanking()">
+        <span style="font-size:15px;width:20px;text-align:center;flex-shrink:0;">${medals[i]}</span>
         <span style="flex:1;font-size:12px;color:#34444f;">${s.name}</span>
         <span style="font-size:11px;color:#8b98a3;">ব্লক ${s.block||s.blk}</span>
         <span style="font-size:12px;font-weight:700;color:#a9822f;">${bnRK(s.total)}</span>
       </div>`).join("")}
+      <div onclick="goRanking()" style="text-align:center;margin-top:8px;padding-top:8px;border-top:1px solid #e2dbc720;font-size:12px;font-weight:700;color:#2b7fd6;cursor:pointer;">📋 সম্পূর্ণ তালিকা দেখুন</div>
     </div>`;
   }catch(e){ console.error("dash rank widget:", e); }
 }
@@ -10827,6 +10964,71 @@ fbListen('roomData', data=>{
     if(typeof brRenderPage2==='function' && typeof brCurrentBlock!=='undefined' && brCurrentBlock){
       brRenderPage2();
     }
+  }
+});
+</script>
+
+<!-- ══════════════════════════════════════════════════════════
+     টেস্ট ডেটা রিসেট — শুধুমাত্র অ্যাডমিন
+     পরীক্ষা করার সময় যেসব তথ্য বিভিন্ন ফিচারে ইনপুট দেওয়া হয়েছিল
+     (হাজিরা, ছুটি, পাওনা, চেকলিস্ট, আচরণ, অভিযোগ ইত্যাদি) — সব একসাথে
+     Firebase থেকে মুছে অ্যাপকে নতুন/পরিষ্কার অবস্থায় ফিরিয়ে আনে।
+     লগইন অ্যাকাউন্ট (authUsers) এই তালিকার বাইরে রাখা হয়েছে, যাতে
+     কারো লগইন করার সুযোগ নষ্ট না হয়।
+     ══════════════════════════════════════════════════════════ -->
+<script>
+const TEST_DATA_PATHS = [
+  'namaz','namazMeta','cleanliness','cleanlinessHistory','uniform',
+  'arabicClass','sickClassSkip','sickFollowup','healthRecords',
+  'behaviorRecords','blockDifficulty','complaintActions',
+  'afternoonStudy','eveningStudy','nightStudyRest','timelyLog',
+  'zohrLunch','zohrLunchFinalized','ishaDinner','ishaDinnerFinalized',
+  'observations','observationMeta','staffKpi','sportsMarks',
+  'leaveRecords','studentDues',
+  // roomData (রুম/ক্লাস এলাইনমেন্ট) ইচ্ছাকৃতভাবে বাদ রাখা হয়েছে —
+  // এটা রিসেট করলে ছাত্রদের রুম বণ্টন হারিয়ে যেত, যা রাখা প্রয়োজন।
+];
+
+async function clearAllTestData(){
+  const user = (typeof getSessionUser==='function') ? getSessionUser() : null;
+  if(!user || user.role!=='admin'){ alert('এই কাজটি শুধুমাত্র অ্যাডমিন করতে পারবেন।'); return; }
+
+  if(!confirm('⚠️ এটি পরীক্ষামূলকভাবে ইনপুট দেওয়া সমস্ত তথ্য (হাজিরা, ছুটি, পাওনা, চেকলিস্ট, আচরণ, অভিযোগ ইত্যাদি) স্থায়ীভাবে মুছে ফেলবে।\n\nলগইন অ্যাকাউন্ট এবং রুম/ক্লাস এলাইনমেন্ট (কোন ছাত্র কোন রুমে) অক্ষুণ্ণ থাকবে, মুছে যাবে না।\n\nআপনি কি নিশ্চিত?')) return;
+  if(!confirm('এই কাজটি আর ফিরিয়ে আনা যাবে না। সত্যিই সব টেস্ট ডেটা মুছে ফেলতে চান?')) return;
+
+  let okCount = 0, failCount = 0;
+  for(const path of TEST_DATA_PATHS){
+    try{
+      const ok = await new Promise(res=>{
+        const result = fbSet(path, null);
+        if(result && typeof result.then === 'function'){ result.then(()=>res(true)).catch(()=>res(false)); }
+        else { res(true); }
+      });
+      if(ok) okCount++; else failCount++;
+    }catch(e){ failCount++; }
+  }
+
+  // লোকাল ভ্যারিয়েবলও পরিষ্কার করা
+  if(typeof lvRecords!=='undefined') lvRecords = [];
+  if(typeof STUDENT_DUES!=='undefined') STUDENT_DUES = {};
+
+  alert(`✅ টেস্ট ডেটা রিসেট সম্পন্ন। (${okCount}টি বিভাগ পরিষ্কার হয়েছে${failCount>0?', '+failCount+'টি ব্যর্থ হয়েছে':''})\n\nপেজটি এখন রিফ্রেশ হবে।`);
+  location.reload();
+}
+</script>
+
+<!-- ══════════════════════════════════════════════════════════
+     ছাত্র রোস্টার সিঙ্ক — নতুন ছাত্র ভর্তি / বিদায়ী ছাত্র ডিলিট
+     সব ব্যবহারকারীর ব্রাউজারে রিয়েল-টাইমে সিঙ্ক থাকবে
+     ══════════════════════════════════════════════════════════ -->
+<script>
+fbListen('studentRoster', data=>{
+  if(data && typeof data==='object' && Object.keys(data).length>0){
+    Object.keys(STUDENTS_BY_CLASS).forEach(k=>{ delete STUDENTS_BY_CLASS[k]; });
+    Object.keys(data).forEach(k=>{ STUDENTS_BY_CLASS[k]=data[k]; });
+    if(typeof assignRooms==='function') assignRooms();
+    if(document.getElementById('page-students')?.classList.contains('active') && typeof render==='function') render();
+    if(typeof renderDashBlockCards==='function') renderDashBlockCards();
   }
 });
 </script>
