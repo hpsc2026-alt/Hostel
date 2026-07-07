@@ -2480,6 +2480,17 @@ function obShowHistory(){
   </div>
 </div>
 
+<!-- একটি ছাত্রের এখন পর্যন্ত জমা হওয়া সব অভিযোগ (কবে, কী ধরনের) দেখানোর মডাল -->
+<div class="modal-overlay hide" id="ogHistoryOverlay" onclick="if(event.target===this) ogCloseHistoryModal()" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9000;align-items:flex-end;">
+  <div style="background:#ffffff;width:100%;border-radius:20px 20px 0 0;padding:20px;font-family:'Hind Siliguri',sans-serif;max-height:70vh;overflow-y:auto;box-sizing:border-box;">
+    <div style="width:40px;height:4px;background:#e2dbc7;border-radius:2px;margin:0 auto 16px;"></div>
+    <div style="font-size:15px;font-weight:700;color:#24313b;margin-bottom:2px;" id="og-history-name">—</div>
+    <div style="font-size:12px;color:#c9605f;margin-bottom:14px;" id="og-history-sub">—</div>
+    <div id="og-history-list"></div>
+    <button onclick="ogCloseHistoryModal()" style="width:100%;margin-top:14px;padding:12px;border-radius:10px;border:1px solid #e2dbc7;background:#ffffff;color:#5c6f7a;font-size:13px;font-weight:700;font-family:inherit;">বন্ধ করুন</button>
+  </div>
+</div>
+
 <style>
 .og-card{margin:12px 16px;border-radius:14px;background:#ffffff;border:1px solid #e2dbc7;overflow:hidden;}
 .og-card.og-severe{border-color:#d1c3c3;}
@@ -2489,6 +2500,7 @@ function obShowHistory(){
 .og-hd-desc{font-size:12px;color:#c9c9d0;margin-top:6px;line-height:1.5;}
 .og-hd-time{font-size:10px;color:#8b98a3;white-space:nowrap;}
 .og-cat-badge{font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;background:#c3bebe;color:#c9605f;display:inline-block;margin-top:6px;}
+.og-history-badge{font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;background:#f0dca6;color:#8a6a1f;display:inline-block;margin-top:6px;margin-left:6px;cursor:pointer;}
 .og-body{padding:12px 14px;}
 .og-check-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:pointer;}
 .og-check-box{width:22px;height:22px;border-radius:6px;border:1.5px solid #dbe2e8;background:#faf8f2;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;}
@@ -2564,8 +2576,13 @@ function ogStreakDays(complianceLog){
   return count;
 }
 
+// শুধু এই ক্যাটাগরিগুলো (গুরুতর, সরাসরি সুপারভিশন দরকার) এবং isComplaint:true ফ্ল্যাগ করা রেকর্ড
+// কমপ্লেইন্ট সেন্টারে দেখানো হয়। নামাজ/পড়া/ইউনিফর্ম/ডাইনিং/আরবি ক্লাসের মতো রুটিন দৈনিক
+// ডিমেরিট রেকর্ড (যেগুলো নিয়মিত চেকলিস্ট/হাজিরা মডিউল থেকে স্বয়ংক্রিয়ভাবে আসে) এখানে দেখানো হয় না,
+// যাতে প্রকৃত অভিযোগগুলো সেগুলোর ভিড়ে হারিয়ে না যায়।
+const OG_COMPLAINT_CATS = ['fight','escape','severe','classSkip'];
 function ogGetComplaints(){
-  const list = (typeof bhRecords!=='undefined'?bhRecords:[]).filter(r=>r.type==='minus');
+  const list = (typeof bhRecords!=='undefined'?bhRecords:[]).filter(r=>r.type==='minus' && (OG_COMPLAINT_CATS.includes(r.cat) || r.isComplaint===true));
   const todayKey = fbTodayKey();
   return list.map(r=>{
     const a = ogActions[r.id] || {actionTaken:false, actionDesc:'', complianceLog:{}, resolved:false};
@@ -2575,8 +2592,10 @@ function ogGetComplaints(){
   }).sort((x,y)=>(y.r.ts||0)-(x.r.ts||0)); // সর্বশেষ অভিযোগ আগে
 }
 
+let ogItemsCache = [];
 function ogRender(){
   const items = ogGetComplaints();
+  ogItemsCache = items;
   const totalAll = items.length;
   const totalPending = items.filter(i=>!i.a.actionTaken && !i.a.resolved).length;
   const totalActive = items.filter(i=>i.underPunishment).length;
@@ -2595,6 +2614,8 @@ function ogRender(){
 
   document.getElementById('og-list').innerHTML = filtered.map(({r,a,streak})=>{
     const isSevere = r.cat==='severe' || r.cat==='fight' || r.cat==='escape';
+    const stuHistoryCount = items.filter(i=>i.r.stuName===r.stuName).length;
+    const nameEsc = (r.stuName||'').replace(/'/g,"\\'");
     return `<div class="og-card ${isSevere?'og-severe':''}">
       <div class="og-hd">
         <div style="flex:1;">
@@ -2602,6 +2623,7 @@ function ogRender(){
           <div class="og-hd-meta">${CLASS_BN[r.cls]||''} শ্রেণী • ব্লক ${r.blk} • রিপোর্ট করেছেন ${r.by||'—'}</div>
           <div class="og-hd-desc">${r.desc||''}</div>
           <div class="og-cat-badge">${BH_CAT_LABELS[r.cat]||r.cat}</div>
+          ${stuHistoryCount>1 ? `<div class="og-history-badge" onclick="event.stopPropagation();ogShowStudentHistory('${nameEsc}')">📋 এই ছাত্রের মোট ${bnDigits(stuHistoryCount)}টি অভিযোগ — দেখুন</div>` : ''}
         </div>
         <div class="og-hd-time">${r.time||''}</div>
       </div>
@@ -2627,6 +2649,26 @@ function ogRender(){
       </div>
     </div>`;
   }).join('');
+}
+
+// একটি নির্দিষ্ট ছাত্রের এখন পর্যন্ত জমা হওয়া সব অভিযোগ — কবে, কী ধরনের — তালিকা আকারে দেখানো
+function ogShowStudentHistory(stuName){
+  const list = ogItemsCache.filter(i=>i.r.stuName===stuName).sort((x,y)=>(y.r.ts||0)-(x.r.ts||0));
+  document.getElementById('og-history-name').textContent = stuName;
+  document.getElementById('og-history-sub').textContent = 'মোট ' + bnDigits(list.length) + 'টি অভিযোগ';
+  document.getElementById('og-history-list').innerHTML = list.map(({r,a})=>{
+    const dateStr = r.ts ? ncFmtDateBn(fbDateKey(new Date(r.ts))) : (r.time||'');
+    const statusIco = a.resolved ? '✅' : (a.actionTaken ? '⏳' : '🔴');
+    return `<div style="padding:10px 0;border-bottom:1px solid #eef1f4;">
+      <div style="font-size:12px;font-weight:700;color:#24313b;">${statusIco} ${BH_CAT_LABELS[r.cat]||r.cat}</div>
+      <div style="font-size:11px;color:#5c6f7a;margin-top:2px;">${r.desc||''}</div>
+      <div style="font-size:10px;color:#8b98a3;margin-top:3px;">📅 ${dateStr} • রিপোর্ট করেছেন ${r.by||'—'}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('ogHistoryOverlay').classList.remove('hide');
+}
+function ogCloseHistoryModal(){
+  document.getElementById('ogHistoryOverlay').classList.add('hide');
 }
 
 function ogSave(recordId){
@@ -5689,7 +5731,7 @@ function submitChecklist(){
   </div>
   <button class="bh-add-btn" onclick="bhToggleForm()">➕ নতুন আচরণ রিপোর্ট করুন</button>
   <div class="bh-form" id="bh-form">
-    <div class="bh-form-title">📝 আচরণ রিপোর্ট</div>
+    <div class="bh-form-title" id="bh-form-title">📝 আচরণ রিপোর্ট</div>
     <select class="bh-inp" id="bh-stu-select"><option value="">— ছাত্র নির্বাচন করুন —</option></select>
     <select class="bh-inp" id="bh-cat-select" onchange="bhCatChange()">
       <option value="">— ঘটনার ধরন —</option>
@@ -5829,11 +5871,16 @@ function goBehaviour(){ bhPopulateStudents(); bhRender(); showPage("behaviour");
 
 // হাউস টিউটর/স্টাফ যখন নতুন অভিযোগ জানাতে চান — সরাসরি ফর্ম খুলে দেয়,
 // আগে এই বাটন শুধু রিভিউ-পেজে (অভিযোগ কেন্দ্র) নিয়ে যেত, নতুন অভিযোগ লেখার উপায় ছিল না।
+// bhComplaintMode = true মানে এই ফর্ম দিয়ে যা সংরক্ষণ হবে তা "অভিযোগ" হিসেবে চিহ্নিত হবে,
+// যাতে রুটিন আচরণ রিপোর্টের সাথে মিশে গিয়ে কমপ্লেইন্ট সেন্টার আটকে না যায়।
+let bhComplaintMode = false;
 function goFileComplaint(){
+  bhComplaintMode = true;
   bhPopulateStudents();
   bhRender();
   showPage("behaviour");
   document.getElementById("bh-form").classList.add("show");
+  document.getElementById("bh-form-title").textContent = "🚨 অভিযোগ দিন";
   bhSelectPts("minus");
 }
 
@@ -5851,7 +5898,11 @@ function bhPopulateStudents(){
   });
 }
 
-function bhToggleForm(){ document.getElementById("bh-form").classList.toggle("show"); }
+function bhToggleForm(){
+  bhComplaintMode = false;
+  document.getElementById("bh-form-title").textContent = "📝 আচরণ রিপোর্ট";
+  document.getElementById("bh-form").classList.toggle("show");
+}
 
 function bhCatChange(){
   const cat=document.getElementById("bh-cat-select").value;
@@ -5885,7 +5936,7 @@ function bhSave(){
   const raw=localStorage.getItem("hms_user");
   const u=raw?JSON.parse(raw):{name:"ডেমো"};
   const opt=stuSel.options[stuSel.selectedIndex];
-  const rec={id:bhNextId++,stuName:stuName.toUpperCase(),cls:opt.dataset.cls||"",blk:opt.dataset.blk||"",cat,desc,type:bhPtsType,pts,time:"এইমাত্র",by:u.name,ts:Date.now()};
+  const rec={id:bhNextId++,stuName:stuName.toUpperCase(),cls:opt.dataset.cls||"",blk:opt.dataset.blk||"",cat,desc,type:bhPtsType,pts,time:"এইমাত্র",by:u.name,ts:Date.now(),isComplaint:bhComplaintMode};
   bhRecords.unshift(rec);
   fbPush("behaviorRecords", rec);
   document.getElementById("bh-stu-select").value="";
@@ -5895,8 +5946,11 @@ function bhSave(){
   bhPtsType="minus";
   document.getElementById("bh-minus-btn").className="bh-pts-btn";
   document.getElementById("bh-plus-btn").className="bh-pts-btn";
+  const wasComplaint = bhComplaintMode;
+  bhComplaintMode = false;
+  document.getElementById("bh-form-title").textContent = "📝 আচরণ রিপোর্ট";
   bhRender();
-  bhShowToast("✅ রিপোর্ট সংরক্ষিত হয়েছে!","success");
+  bhShowToast(wasComplaint ? "✅ অভিযোগ জমা হয়েছে!" : "✅ রিপোর্ট সংরক্ষিত হয়েছে!","success");
 }
 
 function bhFilter(f,el){
@@ -9747,7 +9801,7 @@ async function rkRenderDashWidget(){
   <div class="topbar">
     <div class="tb-back" onclick="goDashboard()">←</div>
     <div class="tb-info"><div class="tb-title">🚩 আজকের অসম্পূর্ণ কাজ — সব ব্লক</div><div class="tb-sub" id="nc-date-sub">লোড হচ্ছে...</div></div>
-    <div class="tb-action" style="background:#faf8f2;border:1px solid #e2dbc7;border-radius:10px;font-size:16px;" onclick="ncRender()">🔄</div>
+    <div class="tb-action" style="background:#faf8f2;border:1px solid #e2dbc7;border-radius:10px;font-size:16px;" onclick="ncRender(true)">🔄</div>
   </div>
 
   <div class="nc-hero">
@@ -9794,6 +9848,17 @@ async function rkRenderDashWidget(){
   </div>
 </div>
 
+<!-- একটি নির্দিষ্ট ত্রুটির অতীত ইতিহাস (কোন কোন তারিখে আগে হয়েছে) দেখানোর মডাল -->
+<div class="modal-overlay hide" id="ncHistoryOverlay" onclick="if(event.target===this) ncCloseHistoryModal()" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9000;align-items:flex-end;">
+  <div style="background:#ffffff;width:100%;border-radius:20px 20px 0 0;padding:20px;font-family:'Hind Siliguri',sans-serif;max-height:70vh;overflow-y:auto;box-sizing:border-box;">
+    <div style="width:40px;height:4px;background:#e2dbc7;border-radius:2px;margin:0 auto 16px;"></div>
+    <div style="font-size:15px;font-weight:700;color:#24313b;margin-bottom:2px;" id="nc-history-name">—</div>
+    <div style="font-size:12px;color:#c94545;margin-bottom:14px;" id="nc-history-label">—</div>
+    <div id="nc-history-dates"></div>
+    <button onclick="ncCloseHistoryModal()" style="width:100%;margin-top:14px;padding:12px;border-radius:10px;border:1px solid #e2dbc7;background:#ffffff;color:#5c6f7a;font-size:13px;font-weight:700;font-family:inherit;">বন্ধ করুন</button>
+  </div>
+</div>
+
 <script>
 const bnNC=n=>String(n).replace(/\d/g,x=>"০১২৩৪৫৬৭৮৯"[x]);
 const ncMonthsBn=["জানুয়ারি","ফেব্রুয়ারি","মার্চ","এপ্রিল","মে","জুন","জুলাই","আগস্ট","সেপ্টেম্বর","অক্টোবর","নভেম্বর","ডিসেম্বর"];
@@ -9828,23 +9893,24 @@ function ncCleanupExpiredOngoing(todayKey){
 // একটি মার্কিং-ভ্যালু (স্ট্রিং / গ্রুপ-অবজেক্ট / চেকবক্স-অবজেক্ট) থেকে যেকোনো META কনফিগ ব্যবহার করে
 // স্বয়ংক্রিয়ভাবে নেতিবাচক (ptype:'minus') এন্ট্রিগুলো বের করে আনে। নতুন কোনো রিপোর্ট মডিউল যোগ হলে
 // এটি বাড়তি কোনো কোড ছাড়াই স্বয়ংক্রিয়ভাবে "আজকের অসম্পূর্ণ কাজ"-এ ধরা পড়বে, যতক্ষণ তার META-তে ptype থাকে।
-function ncMetaIssues(markValue, metaObj, prefix, skipGroups){
+function ncMetaIssues(markValue, metaObj, catId, prefix, skipGroups){
   const issues = [];
   if(markValue==null || !metaObj) return issues;
   const pfx = prefix ? (prefix+' — ') : '';
+  const mkKey = k => catId+':'+(prefix||'')+':'+k;
   if(typeof markValue === 'string'){
     const m = metaObj[markValue];
-    if(m && m.ptype==='minus' && !(skipGroups && skipGroups.includes(m.group))) issues.push(pfx+m.ico+' '+m.label);
+    if(m && m.ptype==='minus' && !(skipGroups && skipGroups.includes(m.group))) issues.push({key:mkKey(markValue), label:pfx+m.ico+' '+m.label});
   } else if(typeof markValue === 'object'){
     Object.entries(markValue).forEach(([k,v])=>{
       if(v===true){
         // চেকবক্স-স্টাইল: কী নিজেই META-এর কী (যেমন nrMarks)
         const m = metaObj[k];
-        if(m && m.ptype==='minus' && !(skipGroups && skipGroups.includes(m.group))) issues.push(pfx+m.ico+' '+m.label);
+        if(m && m.ptype==='minus' && !(skipGroups && skipGroups.includes(m.group))) issues.push({key:mkKey(k), label:pfx+m.ico+' '+m.label});
       } else if(typeof v === 'string'){
         // গ্রুপ-স্টাইল: ভ্যালুটি META-এর কী (যেমন ccMarks, zlMarks, acMarks)
         const m = metaObj[v];
-        if(m && m.ptype==='minus' && !(skipGroups && skipGroups.includes(m.group))) issues.push(pfx+m.ico+' '+m.label);
+        if(m && m.ptype==='minus' && !(skipGroups && skipGroups.includes(m.group))) issues.push({key:mkKey(v), label:pfx+m.ico+' '+m.label});
       }
     });
   }
@@ -9895,19 +9961,19 @@ async function ncBuildTodayIssues(){
     if(onLeave.has(s.serial)) return;
     const sid = s.serial;
     const issues = [];
-    issues.push(...ncMetaIssues(cc[sid], CC_META));
-    issues.push(...ncMetaIssues(uf[sid], UF_OPTIONS));
+    issues.push(...ncMetaIssues(cc[sid], CC_META, 'cc'));
+    issues.push(...ncMetaIssues(uf[sid], UF_OPTIONS, 'uf'));
     if(!nsIsReligionExempt(s)){
-      issues.push(...ncMetaIssues(nsF[sid], NAMAZ_STATUS, 'ফজর'));
-      issues.push(...ncMetaIssues(nsA[sid], NAMAZ_STATUS, 'আসর'));
-      issues.push(...ncMetaIssues(nsM[sid], NAMAZ_STATUS, 'মাগরিব'));
+      issues.push(...ncMetaIssues(nsF[sid], NAMAZ_STATUS, 'namaz', 'ফজর'));
+      issues.push(...ncMetaIssues(nsA[sid], NAMAZ_STATUS, 'namaz', 'আসর'));
+      issues.push(...ncMetaIssues(nsM[sid], NAMAZ_STATUS, 'namaz', 'মাগরিব'));
     }
-    issues.push(...ncMetaIssues(zl[sid], ZL_META, null, nsIsReligionExempt(s)?['prayer']:null));
-    issues.push(...ncMetaIssues(id[sid], ID_META, null, nsIsReligionExempt(s)?['prayer']:null));
-    issues.push(...ncMetaIssues(es[sid], ES_OPTIONS));
-    issues.push(...ncMetaIssues(nr[sid], NR_META));
-    if(!nsIsReligionExempt(s)) issues.push(...ncMetaIssues(ac[sid], AC_OPTIONS));
-    issues.push(...ncMetaIssues(scMarksData[sid], SC_META));
+    issues.push(...ncMetaIssues(zl[sid], ZL_META, 'zl', null, nsIsReligionExempt(s)?['prayer']:null));
+    issues.push(...ncMetaIssues(id[sid], ID_META, 'id', null, nsIsReligionExempt(s)?['prayer']:null));
+    issues.push(...ncMetaIssues(es[sid], ES_OPTIONS, 'es'));
+    issues.push(...ncMetaIssues(nr[sid], NR_META, 'nr'));
+    if(!nsIsReligionExempt(s)) issues.push(...ncMetaIssues(ac[sid], AC_OPTIONS, 'ac'));
+    issues.push(...ncMetaIssues(scMarksData[sid], SC_META, 'sc'));
 
     if(issues.length>0) result.push({...s, issues});
   });
@@ -9936,7 +10002,117 @@ async function ncGetVisibleRows(){
   return rows;
 }
 
-async function ncRender(){
+// ══ প্রতিটি ত্রুটির "ইতিহাস" — এই ছাত্র আগে এই একই ধরনের কাজ কতবার করেছে, কবে কবে ══
+// একবার একটা নির্দিষ্ট সময়সীমা (নিচে NC_HISTORY_DAYS) জুড়ে সব ক্যাটাগরির ডেটা রেঞ্জ-ফেচ করে
+// প্রতিটি ছাত্র ও প্রতিটি ইস্যু-কী অনুযায়ী কোন কোন তারিখে হয়েছে তার একটা ইনডেক্স বানানো হয়,
+// যাতে বারবার Firebase কল না করে দ্রুত "আগে কতবার/কবে" দেখানো যায়।
+const NC_HISTORY_DAYS = 90;
+let ncHistoryIndex = null;
+let ncHistoryPromise = null;
+
+function ncEnsureHistoryIndex(force){
+  if(force) { ncHistoryIndex = null; ncHistoryPromise = null; }
+  if(ncHistoryIndex && !force) return Promise.resolve(ncHistoryIndex);
+  if(ncHistoryPromise) return ncHistoryPromise;
+  ncHistoryPromise = ncBuildHistoryIndex().then(idx=>{ ncHistoryIndex = idx; ncHistoryPromise = null; return idx; });
+  return ncHistoryPromise;
+}
+
+async function ncBuildHistoryIndex(){
+  if(allStudents.length===0) assignRooms();
+  const today = new Date();
+  const startBoundary = new Date(today);
+  startBoundary.setDate(startBoundary.getDate()-NC_HISTORY_DAYS);
+  const startKey = fbDateKey(startBoundary);
+  const endKey = fbDateKey(today);
+
+  const [ccR, ufR, nsR, zlR, idR, esR, nrR, acR, scR] = await Promise.all([
+    fbGetRange('cleanliness',    startKey, endKey),
+    fbGetRange('uniform',        startKey, endKey),
+    fbGetRange('namaz',          startKey, endKey),
+    fbGetRange('zohrLunch',      startKey, endKey),
+    fbGetRange('ishaDinner',     startKey, endKey),
+    fbGetRange('eveningStudy',   startKey, endKey),
+    fbGetRange('nightStudyRest', startKey, endKey),
+    fbGetRange('arabicClass',    startKey, endKey),
+    fbGetRange('sickClassSkip',  startKey, endKey),
+  ]);
+
+  const index = {}; // { [serial]: { [issueKey]: [dateKey, ...] } }
+  const addEntry = (serial, key, dateKey) => {
+    if(!index[serial]) index[serial] = {};
+    if(!index[serial][key]) index[serial][key] = [];
+    index[serial][key].push(dateKey);
+  };
+
+  // প্রতিটি হোস্টেল-দিন (মাগরিব-টু-মাগরিব চক্র) আজকের আগে পর্যন্ত হিসাব করা (আজকের চলমান ইস্যু বাদে)
+  const cursor = new Date(startBoundary);
+  cursor.setDate(cursor.getDate()+1);
+  const todayKey = fbDateKey(today);
+  while(fbDateKey(cursor) < todayKey){
+    const eKey = fbDateKey(cursor);
+    const prevDate = new Date(cursor); prevDate.setDate(prevDate.getDate()-1);
+    const sKey = fbDateKey(prevDate);
+
+    const cc = ccR[eKey] || {};
+    const uf = ufR[eKey] || {};
+    const nsEnd = nsR[eKey] || {};
+    const nsStart = nsR[sKey] || {};
+    const nsF = nsEnd['ফজর'] || {};
+    const nsA = nsEnd['আসর'] || {};
+    const nsM = nsStart['মাগরিব'] || {};
+    const zl = zlR[eKey] || {};
+    const id = idR[sKey] || {};
+    const es = esR[sKey] || {};
+    const nr = nrR[sKey] || {};
+    const ac = acR[eKey] || {};
+    const scMarksData = (scR[eKey]||{}).marks || {};
+
+    allStudents.forEach(s=>{
+      const sid = s.serial;
+      const dayIssues = [];
+      dayIssues.push(...ncMetaIssues(cc[sid], CC_META, 'cc'));
+      dayIssues.push(...ncMetaIssues(uf[sid], UF_OPTIONS, 'uf'));
+      if(!nsIsReligionExempt(s)){
+        dayIssues.push(...ncMetaIssues(nsF[sid], NAMAZ_STATUS, 'namaz', 'ফজর'));
+        dayIssues.push(...ncMetaIssues(nsA[sid], NAMAZ_STATUS, 'namaz', 'আসর'));
+        dayIssues.push(...ncMetaIssues(nsM[sid], NAMAZ_STATUS, 'namaz', 'মাগরিব'));
+      }
+      dayIssues.push(...ncMetaIssues(zl[sid], ZL_META, 'zl', null, nsIsReligionExempt(s)?['prayer']:null));
+      dayIssues.push(...ncMetaIssues(id[sid], ID_META, 'id', null, nsIsReligionExempt(s)?['prayer']:null));
+      dayIssues.push(...ncMetaIssues(es[sid], ES_OPTIONS, 'es'));
+      dayIssues.push(...ncMetaIssues(nr[sid], NR_META, 'nr'));
+      if(!nsIsReligionExempt(s)) dayIssues.push(...ncMetaIssues(ac[sid], AC_OPTIONS, 'ac'));
+      dayIssues.push(...ncMetaIssues(scMarksData[sid], SC_META, 'sc'));
+      dayIssues.forEach(iss=>addEntry(sid, iss.key, eKey));
+    });
+
+    cursor.setDate(cursor.getDate()+1);
+  }
+
+  return index;
+}
+
+function ncHistoryDatesFor(serial, key){
+  if(!ncHistoryIndex || !ncHistoryIndex[serial] || !ncHistoryIndex[serial][key]) return [];
+  return ncHistoryIndex[serial][key];
+}
+
+function ncShowHistoryDates(name, label, serial, key){
+  const dates = ncHistoryDatesFor(serial, key);
+  document.getElementById('nc-history-name').textContent = name;
+  document.getElementById('nc-history-label').textContent = label + ' — আগে ' + bnNC(dates.length) + ' বার হয়েছে';
+  const sorted = [...dates].sort().reverse();
+  document.getElementById('nc-history-dates').innerHTML = sorted.length ? sorted.map(dk=>
+    `<div style="padding:9px 0;border-bottom:1px solid #eef1f4;font-size:13px;color:#24313b;">📅 ${ncFmtDateBn(dk)}</div>`
+  ).join('') : '<div style="padding:14px 0;text-align:center;color:#8b98a3;font-size:12px;">গত '+bnNC(NC_HISTORY_DAYS)+' দিনে আগে হয়নি</div>';
+  document.getElementById('ncHistoryOverlay').classList.remove('hide');
+}
+function ncCloseHistoryModal(){
+  document.getElementById('ncHistoryOverlay').classList.add('hide');
+}
+
+async function ncRender(forceHistory){
   const cycle = hostelCycleKeys();
   const bnDate = d => bnNC(d.getDate())+" "+ncMonthsBn[d.getMonth()];
   document.getElementById('nc-date-sub').textContent = 'মাগরিব, '+bnDate(cycle.startDate)+' — মাগরিব, '+bnDate(cycle.endDate);
@@ -9944,7 +10120,7 @@ async function ncRender(){
   const wrap = document.getElementById('nc-block-sections');
   wrap.innerHTML = '<div class="nc-empty">⏳ লোড হচ্ছে...</div>';
 
-  const rows = await ncGetVisibleRows();
+  const [rows] = await Promise.all([ncGetVisibleRows(), ncEnsureHistoryIndex(forceHistory)]);
   const totalIssues = rows.reduce((sum,r)=>sum+r.issues.length,0);
   document.getElementById('nc-stat-students').textContent = bnNC(rows.length);
   document.getElementById('nc-stat-issues').textContent = bnNC(totalIssues);
@@ -9979,7 +10155,15 @@ async function ncRender(){
         <div class="nc-row-name">
           <div class="nc-row-name-txt">${s.name}</div>
           <div class="nc-row-meta">${CLASS_BN[s.cls]} • রুম ${s.room}</div>
-          ${s.issues.length>0?`<div class="nc-row-issues">${s.issues.map(t=>`<span class="nc-tag">${t}</span>`).join('')}</div>`:''}
+          ${s.issues.length>0?`<div class="nc-row-issues">${s.issues.map(t=>{
+            const histDates = ncHistoryDatesFor(s.serial, t.key);
+            const cnt = histDates.length;
+            const nameEsc=(s.name||'').replace(/'/g,"\\'");
+            const labelEsc=(t.label||'').replace(/'/g,"\\'");
+            return cnt>0
+              ? `<span class="nc-tag" onclick="event.stopPropagation();ncShowHistoryDates('${nameEsc}','${labelEsc}',${s.serial},'${t.key}')" style="cursor:pointer;">${t.label} <b style="color:#a9451f;">🔁 আগে ${bnNC(cnt)} বার</b></span>`
+              : `<span class="nc-tag">${t.label}</span>`;
+          }).join('')}</div>`:''}
           ${actionHtml}
         </div>
         <div class="nc-row-count">${s.issues.length>0?bnNC(s.issues.length):''}</div>
