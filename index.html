@@ -1260,18 +1260,6 @@ function effectiveUsers(role){
   </div>
 </div>
 
-<!-- পরিচ্ছন্নতা ও সকালের পড়া — ব্লকভিত্তিক রিপোর্ট -->
-<div class="section-header">🧹 সকালের রিপোর্ট — পরিচ্ছন্নতা ও পড়া</div>
-<div class="routine-section">
-  <div class="routine-card" id="ccDashReport"></div>
-</div>
-
-<!-- অসুস্থতা ও ক্লাস ফাঁকি — ব্লকভিত্তিক রিপোর্ট -->
-<div class="section-header">🏥 আজকের রিপোর্ট — অসুস্থতা ও ক্লাস ফাঁকি</div>
-<div class="routine-section">
-  <div class="routine-card" id="scDashReport"></div>
-</div>
-
 <!-- অ্যালার্ট -->
 <div class="section-header" id="alertHeader">🚨 সক্রিয় অ্যালার্ট</div>
 <div class="alerts-section" id="alertsSection"></div>
@@ -1287,9 +1275,6 @@ function effectiveUsers(role){
 <!-- কুইক অ্যাকশন -->
 <div class="section-header">⚡ দ্রুত কাজ</div>
 <div class="quick-actions" id="quickActions"></div>
-
-<!-- টেস্ট ডেটা রিসেট (শুধু অ্যাডমিনের জন্য) -->
-<div id="dashResetSection"></div>
 
 <!-- বটম নেভ -->
 <div class="bottom-nav">
@@ -2461,7 +2446,7 @@ function obShowHistory(){
     <div class="tb-info"><div class="tb-title">🚨 অভিযোগ কেন্দ্র</div><div class="tb-sub" id="og-sub">লোড হচ্ছে...</div></div>
   </div>
 
-  <div class="rk-tabs" style="margin-top:14px;">
+  <div class="rk-tabs" style="margin-top:14px;" id="og-tabs-wrap">
     <div class="rk-tab active" id="og-tab-all" onclick="ogSetTab('all')">📋 সব</div>
     <div class="rk-tab" id="og-tab-pending" onclick="ogSetTab('pending')">⏳ ব্যবস্থা বাকি</div>
     <div class="rk-tab" id="og-tab-active" onclick="ogSetTab('active')">🔒 শাস্তির আওতায়</div>
@@ -2576,13 +2561,18 @@ function ogStreakDays(complianceLog){
   return count;
 }
 
-// শুধু এই ক্যাটাগরিগুলো (গুরুতর, সরাসরি সুপারভিশন দরকার) এবং isComplaint:true ফ্ল্যাগ করা রেকর্ড
-// কমপ্লেইন্ট সেন্টারে দেখানো হয়। নামাজ/পড়া/ইউনিফর্ম/ডাইনিং/আরবি ক্লাসের মতো রুটিন দৈনিক
-// ডিমেরিট রেকর্ড (যেগুলো নিয়মিত চেকলিস্ট/হাজিরা মডিউল থেকে স্বয়ংক্রিয়ভাবে আসে) এখানে দেখানো হয় না,
-// যাতে প্রকৃত অভিযোগগুলো সেগুলোর ভিড়ে হারিয়ে না যায়।
-const OG_COMPLAINT_CATS = ['fight','escape','severe','classSkip'];
+// শুধুমাত্র hাউস টিউটর/স্টাফ যেসব রেকর্ড সরাসরি "🚨 অভিযোগ দিন" ফর্ম দিয়ে জমা দিয়েছেন
+// (isComplaint:true ফ্ল্যাগযুক্ত) সেগুলোই কমপ্লেইন্ট সেন্টারে দেখানো হয়। মারামারি/পলায়নের
+// মতো গুরুতর ক্যাটাগরির রুটিন আচরণ রেকর্ড শুধু ক্যাটাগরির কারণে এখানে আসবে না — কেউ সরাসরি
+// অভিযোগ হিসেবে জমা না দিলে তা এখানে দেখানো হবে না, যাতে তালিকাটি সম্পূর্ণ ডায়নামিক থাকে।
+function ogIsViewOnlyUser(){
+  const raw = localStorage.getItem('hms_user');
+  const u = raw ? JSON.parse(raw) : {};
+  return u.role === 'asst';
+}
+
 function ogGetComplaints(){
-  const list = (typeof bhRecords!=='undefined'?bhRecords:[]).filter(r=>r.type==='minus' && (OG_COMPLAINT_CATS.includes(r.cat) || r.isComplaint===true));
+  const list = (typeof bhRecords!=='undefined'?bhRecords:[]).filter(r=>r.isComplaint===true);
   const todayKey = fbTodayKey();
   return list.map(r=>{
     const a = ogActions[r.id] || {actionTaken:false, actionDesc:'', complianceLog:{}, resolved:false};
@@ -2600,6 +2590,40 @@ function ogRender(){
   const totalPending = items.filter(i=>!i.a.actionTaken && !i.a.resolved).length;
   const totalActive = items.filter(i=>i.underPunishment).length;
   const totalResolved = items.filter(i=>i.a.resolved).length;
+
+  const tabsWrap = document.getElementById('og-tabs-wrap');
+
+  if(ogIsViewOnlyUser()){
+    // হাউস টিউটরগণ শুধু দেখবেন কাদের বিরুদ্ধে অভিযোগ জমা হয়েছে — বিস্তারিত/অ্যাকশন কিছুই না
+    if(tabsWrap) tabsWrap.style.display = 'none';
+    document.getElementById('og-sub').textContent = `মোট ${bnDigits(totalAll)}টি অভিযোগ`;
+    if(!items.length){
+      document.getElementById('og-list').innerHTML = '<div class="og-empty">📭 এখন পর্যন্ত কোনো অভিযোগ জমা হয়নি</div>';
+      return;
+    }
+    // ছাত্র অনুযায়ী গ্রুপ করে শুধু নাম, শ্রেণী, ব্লক ও অভিযোগ সংখ্যা দেখানো
+    const byStu = {};
+    items.forEach(({r})=>{
+      const key = r.stuName;
+      if(!byStu[key]) byStu[key] = {name:r.stuName, cls:r.cls, blk:r.blk, count:0, lastTs:0};
+      byStu[key].count++;
+      byStu[key].lastTs = Math.max(byStu[key].lastTs, r.ts||0);
+    });
+    const stuList = Object.values(byStu).sort((a,b)=>b.lastTs-a.lastTs);
+    document.getElementById('og-list').innerHTML = stuList.map(s=>`
+      <div class="og-card">
+        <div class="og-hd">
+          <div style="flex:1;">
+            <div class="og-hd-name">${s.name}</div>
+            <div class="og-hd-meta">${CLASS_BN[s.cls]||''} শ্রেণী • ব্লক ${s.blk}</div>
+          </div>
+          <div class="og-cat-badge" style="margin-top:0;">মোট ${bnDigits(s.count)}টি অভিযোগ</div>
+        </div>
+      </div>`).join('');
+    return;
+  }
+
+  if(tabsWrap) tabsWrap.style.display = '';
   document.getElementById('og-sub').textContent = `মোট ${bnDigits(totalAll)} • বাকি ${bnDigits(totalPending)} • শাস্তির আওতায় ${bnDigits(totalActive)}`;
 
   let filtered = items;
@@ -2676,6 +2700,7 @@ function ogSave(recordId){
 }
 
 function ogToggleAction(recordId){
+  if(ogIsViewOnlyUser()) return;
   if(!ogActions[recordId]) ogActions[recordId] = {actionTaken:false, actionDesc:'', complianceLog:{}, resolved:false};
   ogActions[recordId].actionTaken = !ogActions[recordId].actionTaken;
   ogSave(recordId);
@@ -2683,12 +2708,14 @@ function ogToggleAction(recordId){
 }
 
 function ogUpdateDesc(recordId, val){
+  if(ogIsViewOnlyUser()) return;
   if(!ogActions[recordId]) ogActions[recordId] = {actionTaken:true, actionDesc:'', complianceLog:{}, resolved:false};
   ogActions[recordId].actionDesc = val;
   ogSave(recordId);
 }
 
 function ogToggleCompliance(recordId){
+  if(ogIsViewOnlyUser()) return;
   if(!ogActions[recordId]) ogActions[recordId] = {actionTaken:true, actionDesc:'', complianceLog:{}, resolved:false};
   if(!ogActions[recordId].complianceLog) ogActions[recordId].complianceLog = {};
   const todayKey = fbTodayKey();
@@ -2699,6 +2726,7 @@ function ogToggleCompliance(recordId){
 }
 
 function ogResolve(recordId){
+  if(ogIsViewOnlyUser()) return;
   if(!confirm('এই সমস্যাটি কি সমাধান হয়ে গেছে হিসেবে বন্ধ করে দিতে চান?')) return;
   ogActions[recordId].resolved = true;
   ogSave(recordId);
@@ -4507,18 +4535,164 @@ function getGreeting(h){
   return {text:'🌆 শুভ সন্ধ্যা', emoji:'🌆'};
 }
 
-function getNextPrayer(h){
-  const prayers = [
-    {name:'ফজর', time:'৫:০০', hour:5},
-    {name:'জোহর', time:'১২:৩০', hour:12},
-    {name:'আসর', time:'৪:০০', hour:16},
-    {name:'মাগরিব', time:'৬:৩০', hour:18},
-    {name:'এশা', time:'৮:০০', hour:20},
+// ══════════════════════════════════════════════════════════════════════
+// নামাজের সময় হিসাব ইঞ্জিন — সৌর অবস্থান (sun position) ভিত্তিক জ্যোতির্বিজ্ঞান
+// সূত্র ব্যবহার করে প্রতিদিনের প্রকৃত ফজর/সূর্যোদয়/জোহর/আসর/মাগরিব/এশার সময় গণনা করে।
+// এতে হার্ডকোড করা স্থির সময়ের বদলে প্রতিদিনের প্রকৃত সৌর অবস্থান অনুযায়ী নির্ভুল সময় পাওয়া যায়।
+// ══════════════════════════════════════════════════════════════════════
+const PT_D2R = Math.PI/180, PT_R2D = 180/Math.PI;
+function ptFixAngle(a){ a = a - 360*Math.floor(a/360); return a<0? a+360 : a; }
+function ptFixHour(h){ h = h - 24*Math.floor(h/24); return h<0? h+24 : h; }
+
+function ptJulian(y,m,d){
+  if(m<=2){ y -= 1; m += 12; }
+  const A = Math.floor(y/100), B = 2 - A + Math.floor(A/4);
+  return Math.floor(365.25*(y+4716)) + Math.floor(30.6001*(m+1)) + d + B - 1524.5;
+}
+
+function ptSunPosition(jd){
+  const Dd = jd - 2451545.0;
+  const g = ptFixAngle(357.529 + 0.98560028*Dd);
+  const q = ptFixAngle(280.459 + 0.98564736*Dd);
+  const L = ptFixAngle(q + 1.915*Math.sin(g*PT_D2R) + 0.020*Math.sin(2*g*PT_D2R));
+  const e = 23.439 - 0.00000036*Dd;
+  let RA = Math.atan2(Math.cos(e*PT_D2R)*Math.sin(L*PT_D2R), Math.cos(L*PT_D2R)) * PT_R2D / 15;
+  RA = ptFixHour(RA);
+  const eqt = q/15 - RA;
+  const decl = Math.asin(Math.sin(e*PT_D2R)*Math.sin(L*PT_D2R)) * PT_R2D;
+  return {decl, eqt};
+}
+
+function ptTimeForAngle(angle, lat, decl, dhuhrUTC, rising){
+  const cosH = (-Math.sin(angle*PT_D2R) - Math.sin(lat*PT_D2R)*Math.sin(decl*PT_D2R)) / (Math.cos(lat*PT_D2R)*Math.cos(decl*PT_D2R));
+  if(cosH > 1 || cosH < -1) return null;
+  const H = Math.acos(cosH) * PT_R2D / 15;
+  return rising ? dhuhrUTC - H : dhuhrUTC + H;
+}
+
+function ptAsrTime(lat, decl, dhuhrUTC, shadowFactor){
+  const A = -PT_R2D * Math.atan(1/(shadowFactor + Math.tan(Math.abs(lat-decl)*PT_D2R)));
+  const cosH = (Math.sin(-A*PT_D2R) - Math.sin(lat*PT_D2R)*Math.sin(decl*PT_D2R)) / (Math.cos(lat*PT_D2R)*Math.cos(decl*PT_D2R));
+  if(cosH > 1 || cosH < -1) return null;
+  const H = Math.acos(cosH) * PT_R2D / 15;
+  return dhuhrUTC + H;
+}
+
+function ptHourToDate(baseDate, hourFloat){
+  const dt = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+  const hh = ptFixHour(hourFloat);
+  const h = Math.floor(hh);
+  let m = Math.round((hh - h)*60);
+  if(m===60){ m=0; dt.setHours(h+1,m,0,0); } else { dt.setHours(h,m,0,0); }
+  return dt;
+}
+
+const PT_DEFAULT_LAT = 23.8103, PT_DEFAULT_LNG = 90.4125;
+const PT_FAJR_ANGLE = 18, PT_ISHA_ANGLE = 18;
+const PT_ASR_SHADOW = 2;
+
+function ptGetCoords(){
+  try{
+    const cached = localStorage.getItem('hms_geo');
+    if(cached){
+      const g = JSON.parse(cached);
+      if(typeof g.lat==='number' && typeof g.lng==='number') return g;
+    }
+  }catch(e){}
+  return {lat: PT_DEFAULT_LAT, lng: PT_DEFAULT_LNG};
+}
+
+function ptRequestLocation(){
+  if(!navigator.geolocation) return;
+  try{
+    if(localStorage.getItem('hms_geo_asked')==='1') return;
+    localStorage.setItem('hms_geo_asked','1');
+  }catch(e){}
+  navigator.geolocation.getCurrentPosition(
+    pos=>{
+      try{ localStorage.setItem('hms_geo', JSON.stringify({lat:pos.coords.latitude, lng:pos.coords.longitude})); }catch(e){}
+      if(document.getElementById('page-dashboard')?.classList.contains('active') && typeof renderDashboard==='function') renderDashboard();
+    },
+    ()=>{ /* পারমিশন না দিলে ঢাকার ডিফল্ট স্থানাঙ্ক ব্যবহার হবে */ },
+    {timeout:8000, maximumAge:3600000}
+  );
+}
+
+function ptCalcTimesForDate(baseDate){
+  const {lat, lng} = ptGetCoords();
+  const tz = -baseDate.getTimezoneOffset()/60;
+  const jd = ptJulian(baseDate.getFullYear(), baseDate.getMonth()+1, baseDate.getDate()) + 0.5 - lng/360;
+  const {decl, eqt} = ptSunPosition(jd + tz/24);
+  const dhuhrUTC = 12 - eqt - lng/15;
+  const dhuhrLocal = dhuhrUTC + tz;
+
+  const fajrUTC    = ptTimeForAngle(PT_FAJR_ANGLE, lat, decl, dhuhrUTC, true);
+  const sunriseUTC = ptTimeForAngle(0.833, lat, decl, dhuhrUTC, true);
+  const asrUTC     = ptAsrTime(lat, decl, dhuhrUTC, PT_ASR_SHADOW);
+  const maghribUTC = ptTimeForAngle(0.833, lat, decl, dhuhrUTC, false);
+  const ishaUTC    = ptTimeForAngle(PT_ISHA_ANGLE, lat, decl, dhuhrUTC, false);
+
+  return {
+    fajr:    fajrUTC!=null    ? ptHourToDate(baseDate, fajrUTC+tz)    : null,
+    sunrise: sunriseUTC!=null ? ptHourToDate(baseDate, sunriseUTC+tz) : null,
+    dhuhr:   ptHourToDate(baseDate, dhuhrLocal),
+    asr:     asrUTC!=null     ? ptHourToDate(baseDate, asrUTC+tz)     : null,
+    maghrib: maghribUTC!=null ? ptHourToDate(baseDate, maghribUTC+tz) : null,
+    isha:    ishaUTC!=null    ? ptHourToDate(baseDate, ishaUTC+tz)    : null,
+  };
+}
+
+function ptFormatBn(dateObj){
+  const bn = n => String(n).replace(/\d/g, x=>'০১২৩৪৫৬৭৮৯'[x]);
+  if(!dateObj) return '—';
+  let h = dateObj.getHours(), m = dateObj.getMinutes();
+  const ampm = h < 12 ? 'AM' : 'PM';
+  let h12 = h % 12; if(h12===0) h12 = 12;
+  return bn(h12)+':'+bn(String(m).padStart(2,'0'))+' '+ampm;
+}
+
+function getNextPrayer(_h, now){
+  now = now || new Date();
+  const order = [
+    {key:'fajr',    name:'ফজর'},
+    {key:'dhuhr',   name:'জোহর'},
+    {key:'asr',     name:'আসর'},
+    {key:'maghrib', name:'মাগরিব'},
+    {key:'isha',    name:'এশা'},
   ];
-  for(let p of prayers){
-    if(h < p.hour) return p;
+  const today = ptCalcTimesForDate(now);
+  const bn = n => String(n).replace(/\d/g, x=>'০১২৩৪৫৬৭৮৯'[x]);
+  for(const p of order){
+    const t = today[p.key];
+    if(t && t.getTime() > now.getTime()){
+      const remainMin = Math.round((t.getTime()-now.getTime())/60000);
+      const rh = Math.floor(remainMin/60), rm = remainMin%60;
+      const remainText = rh>0 ? (bn(rh)+' ঘণ্টা '+bn(rm)+' মিনিট বাকি') : (bn(rm)+' মিনিট বাকি');
+      return {name:p.name, time: ptFormatBn(t), remainText, date:t};
+    }
   }
-  return prayers[0];
+  const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate()+1);
+  const tmr = ptCalcTimesForDate(tomorrow);
+  const t = tmr.fajr;
+  if(t){
+    const remainMin = Math.round((t.getTime()-now.getTime())/60000);
+    const rh = Math.floor(remainMin/60), rm = remainMin%60;
+    const remainText = rh>0 ? (bn(rh)+' ঘণ্টা '+bn(rm)+' মিনিট বাকি') : (bn(rm)+' মিনিট বাকি');
+    return {name:'ফজর', time: ptFormatBn(t), remainText, date:t};
+  }
+  return {name:'ফজর', time:'৫:০০ AM', remainText:'—', date:null};
+}
+
+function refreshPrayerWidget(){
+  const elName = document.getElementById('nextPrayer');
+  const elTime = document.getElementById('nextPrayerTime');
+  if(!elName || !elTime) return;
+  const np = getNextPrayer(new Date().getHours(), new Date());
+  elName.textContent = np.name+' নামাজ';
+  elTime.textContent = 'সময়: '+np.time+' • '+np.remainText;
+}
+if(typeof window!=='undefined'){
+  setInterval(refreshPrayerWidget, 60000);
 }
 
 // ── রোল অনুযায়ী কনফিগ ──
@@ -4582,6 +4756,7 @@ const ROLE_CONFIG = {
       {icon:'📊', label:'আমার রিপোর্ট', onclick:'goReport()'},
       {icon:'🏆', label:'আমার র‍্যাংকিং', onclick:'goStaffRanking()'},
       {icon:'🚨', label:'অভিযোগ দিন', onclick:'goFileComplaint()'},
+      {icon:'📋', label:'অভিযোগ কেন্দ্র দেখুন', onclick:'goComplaintCenter()'},
     ],
     showStaff: false,
   },
@@ -4759,7 +4934,8 @@ function renderDashboard(){
 
   // নামাজ
   document.getElementById('nextPrayer').textContent = np.name+' নামাজ';
-  document.getElementById('nextPrayerTime').textContent = 'সময়: '+np.time;
+  document.getElementById('nextPrayerTime').textContent = 'সময়: '+np.time+' • '+(np.remainText||'');
+  ptRequestLocation();
 
   // রোল ব্যানার
   const b = cfg.banner;
@@ -5042,18 +5218,6 @@ function renderDashboard(){
   // পরিদর্শন প্রতিবেদন রিমাইন্ডার (শুধু সুপার ও অ্যাডমিনের জন্য)
   if(typeof obRenderReminder==='function') obRenderReminder(user);
   if(typeof ogRenderReminder==='function') ogRenderReminder(user);
-
-  // টেস্ট ডেটা রিসেট বাটন (শুধু অ্যাডমিন)
-  const resetEl = document.getElementById('dashResetSection');
-  if(resetEl){
-    if(user.role==='admin'){
-      resetEl.innerHTML = `<div style="margin:6px 16px 16px;text-align:center;">
-        <button onclick="clearAllTestData()" style="background:#faf8f2;border:1px solid #f0caca;color:#c94545;font-size:12px;font-weight:700;padding:9px 16px;border-radius:20px;cursor:pointer;">🗑️ টেস্ট ডেটা রিসেট করুন</button>
-      </div>`;
-    } else {
-      resetEl.innerHTML = '';
-    }
-  }
 
   // নোটিফিকেশন ডট
   if(DYNAMIC_ALERTS.length > 0) document.getElementById('notifDot').style.display='block';
@@ -6657,6 +6821,41 @@ function hlShowToast(msg,type){
 .rp-staff-duty{font-size:11px;color:#5c6f7a;margin-top:1px;}
 .rp-staff-pct{font-size:13px;font-weight:700;}
 .rp-export-btn{width:100%;padding:13px;background:linear-gradient(135deg,#a9822f,#c7a04a);border:none;border-radius:13px;color:#faf8f2;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:10px;}
+
+/* ══ প্রফেশনাল রিপোর্ট — নতুন এলিমেন্ট ══ */
+.rp-meta-bar{margin:0 16px 12px;padding:11px 14px;background:#ffffff;border:1px solid #e2dbc7;border-radius:12px;display:flex;flex-wrap:wrap;gap:6px 16px;}
+.rp-meta-item{font-size:10.5px;color:#5c6f7a;display:flex;align-items:center;gap:4px;}
+.rp-meta-item b{color:#24313b;font-weight:700;}
+.rp-exec-card{margin:0 16px 14px;padding:16px;border-radius:14px;background:linear-gradient(135deg,#1f2b33,#24313b);position:relative;overflow:hidden;}
+.rp-exec-card::before{content:"";position:absolute;top:-40px;right:-40px;width:140px;height:140px;border-radius:50%;background:rgba(201,168,76,0.12);}
+.rp-exec-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;position:relative;z-index:1;}
+.rp-exec-title{font-size:13px;font-weight:700;color:#f3ead2;letter-spacing:.3px;}
+.rp-exec-rating{font-size:10.5px;font-weight:700;padding:5px 11px;border-radius:20px;}
+.rp-exec-text{font-size:12.5px;line-height:1.85;color:#d7dee3;position:relative;z-index:1;}
+.rp-exec-score-row{display:flex;gap:8px;margin-top:12px;position:relative;z-index:1;}
+.rp-exec-score{flex:1;background:rgba(255,255,255,0.06);border-radius:10px;padding:8px 6px;text-align:center;}
+.rp-exec-score-num{font-size:16px;font-weight:700;color:#e8c96a;}
+.rp-exec-score-lbl{font-size:9px;color:#a9b3ba;margin-top:2px;line-height:1.3;}
+.rp-delta{font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;display:inline-flex;align-items:center;gap:2px;}
+.rp-delta.up{background:#e2f3e6;color:#2f9e5c;}
+.rp-delta.down{background:#f9e3e3;color:#c94545;}
+.rp-delta.flat{background:#eef1f4;color:#8b98a3;}
+.rp-table-card{background:#ffffff;border:1px solid #e2dbc7;border-radius:13px;overflow:hidden;margin-bottom:10px;}
+.rp-table-row{display:flex;align-items:center;gap:10px;padding:10px 13px;border-bottom:1px solid #e2dbc720;}
+.rp-table-row:last-child{border-bottom:none;}
+.rp-table-row.hd{background:#faf8f2;font-size:10px;font-weight:700;color:#8b98a3;text-transform:uppercase;letter-spacing:.3px;padding:8px 13px;}
+.rp-table-cat{flex:1;font-size:12px;color:#34444f;font-weight:600;}
+.rp-table-count{font-size:12px;color:#5c6f7a;width:44px;text-align:center;}
+.rp-table-pts{font-size:12px;font-weight:700;width:56px;text-align:right;}
+.rp-note-card{margin:0 16px 14px;padding:13px 14px;background:#f7ecd6;border:1px solid #e6cf9e;border-radius:12px;}
+.rp-note-title{font-size:11.5px;font-weight:700;color:#8b6a1f;margin-bottom:6px;}
+.rp-note-item{font-size:11.5px;color:#6b5620;line-height:1.7;padding-left:14px;position:relative;}
+.rp-note-item::before{content:"•";position:absolute;left:2px;}
+.rp-footer-note{margin:0 16px 6px;text-align:center;font-size:10px;color:#a0adb5;line-height:1.6;}
+.rp-mini-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;}
+.rp-mini-card{background:#ffffff;border:1px solid #e2dbc7;border-radius:12px;padding:10px 6px;text-align:center;}
+.rp-mini-num{font-size:17px;font-weight:700;line-height:1.1;}
+.rp-mini-lbl{font-size:9.5px;color:#5c6f7a;margin-top:3px;line-height:1.3;}
 </style>
 
 <div id="page-report" class="page" style="background:#faf8f2;min-height:100vh;padding-bottom:80px;">
@@ -6698,6 +6897,7 @@ function hlShowToast(msg,type){
 <script>
 const bnR=n=>String(n).replace(/\d/g,x=>"০১২৩৪৫৬৭৮৯"[x]);
 let rpPeriod="today";
+let RP_LAST_TEXT="";
 
 function goReport(){ rpInit(); showPage("report"); }
 function findAndShowStuProfile(name){
@@ -6742,12 +6942,38 @@ function rpPeriodRange(period){
   return {startTs:start.getTime(), endTs:now.getTime()};
 }
 
+// পূর্ববর্তী সমপরিমাণ সময়কাল — তুলনামূলক (ট্রেন্ড) বিশ্লেষণের জন্য
+function rpPrevPeriodRange(period){
+  const {startTs, endTs} = rpPeriodRange(period);
+  const span = endTs - startTs;
+  return {startTs: startTs - span, endTs: startTs};
+}
+
+// একটি সংখ্যার তুলনামূলক পরিবর্তন (বাড়লে/কমলে) দেখানোর জন্য ব্যাজ — higherIsBetter অনুযায়ী রঙ নির্ধারিত হয়
+function rpDeltaBadge(curr, prev, higherIsBetter){
+  if(prev===null || prev===undefined || !isFinite(prev)) return '';
+  const diff = curr - prev;
+  if(Math.abs(diff) < 0.5) return `<span class="rp-delta flat">সমান রয়েছে</span>`;
+  const good = higherIsBetter ? diff > 0 : diff < 0;
+  const arrow = diff > 0 ? '▲' : '▼';
+  const cls = good ? 'up' : 'down';
+  return `<span class="rp-delta ${cls}">${arrow} ${bnR(Math.abs(Math.round(diff)))}</span>`;
+}
+
+function rpReportId(){
+  const d = new Date();
+  return 'HMS-'+d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'-'+String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0');
+}
+
 function rpRender(){
   // পিরিয়ড অনুযায়ী real ডেটা থেকে হিসাব (আগে এগুলো স্থির/ডেমো সংখ্যা ছিল)
   const {startTs, endTs} = rpPeriodRange(rpPeriod);
+  const {startTs: pStartTs, endTs: pEndTs} = rpPrevPeriodRange(rpPeriod);
   const bhScoped = (typeof bhRecords!=='undefined' ? bhRecords : []).filter(r=>typeof r.ts==='number' && r.ts>=startTs && r.ts<=endTs);
+  const bhPrevScoped = (typeof bhRecords!=='undefined' ? bhRecords : []).filter(r=>typeof r.ts==='number' && r.ts>=pStartTs && r.ts<pEndTs);
   const bhMinus = bhScoped.filter(r=>r.type==='minus').reduce((s,r)=>s+(r.pts||0),0);
   const bhPlus  = bhScoped.filter(r=>r.type==='plus').reduce((s,r)=>s+(r.pts||0),0);
+  const bhMinusPrev = bhPrevScoped.filter(r=>r.type==='minus').reduce((s,r)=>s+(r.pts||0),0);
 
   const onLeaveCount = (typeof lvRecords!=='undefined' && typeof lvIsActiveToday==='function')
     ? lvRecords.filter(r=>lvIsActiveToday(r)).length : 0;
@@ -6796,18 +7022,138 @@ function rpRender(){
     const pct = logs.length>0 ? Math.round(onTime/logs.length*100) : 100;
     return {name:u.name, blk, pct};
   });
+  // পূর্ববর্তী সময়কালে স্টাফ পারফরম্যান্সের গড় (তুলনার জন্য)
+  const staffPerfPrev=(typeof USERS!=='undefined' ? USERS.asst : []).map(u=>{
+    const logs = (typeof timelyRecords!=='undefined'?timelyRecords:[]).filter(r=>r.assignedId===u.id && typeof r.ts==='number' && r.ts>=pStartTs && r.ts<pEndTs);
+    const onTime = logs.filter(r=>r.onTime).length;
+    return logs.length>0 ? Math.round(onTime/logs.length*100) : null;
+  }).filter(v=>v!==null);
+  const staffAvgPctPrev = staffPerfPrev.length>0 ? Math.round(staffPerfPrev.reduce((a,b)=>a+b,0)/staffPerfPrev.length) : null;
+
+  // প্রশংসনীয় ছাত্র (এই পিরিয়ডের real ইতিবাচক রেকর্ড থেকে)
+  let topPerformers=(()=>{
+    const map = {};
+    bhScoped.filter(r=>r.type==='plus').forEach(r=>{
+      if(!map[r.stuName]) map[r.stuName] = {name:r.stuName, cls:r.cls, blk:r.blk, pts:0, reasons:[]};
+      map[r.stuName].pts += (r.pts||0);
+      map[r.stuName].reasons.push((typeof BH_CAT_LABELS!=='undefined' && BH_CAT_LABELS[r.cat]) || r.cat);
+    });
+    return Object.values(map).sort((a,b)=>b.pts-a.pts).slice(0,3).map(o=>({
+      name:o.name, cls:o.cls, blk:o.blk, pts:o.pts, reason:[...new Set(o.reasons)].join('، ')||'—'
+    }));
+  })();
+
+  // ক্যাটাগরি অনুযায়ী আচরণ বিশ্লেষণ (সব ধরনের রেকর্ড — গুরুত্ব অনুযায়ী সাজানো)
+  let catBreakdown=(()=>{
+    const map={};
+    bhScoped.forEach(r=>{
+      const key=r.cat||'other';
+      if(!map[key]) map[key]={cat:key, count:0, pts:0, type:r.type};
+      map[key].count += 1;
+      map[key].pts += (r.type==='minus' ? -(r.pts||0) : (r.pts||0));
+    });
+    return Object.values(map).sort((a,b)=>Math.abs(b.pts)-Math.abs(a.pts));
+  })();
+
+  // রুম দখল/ঘনত্ব বিশ্লেষণ
+  let roomStats=(()=>{
+    const rooms={};
+    allStudents.forEach(s=>{
+      const key=(s.block||s.blk)+'-'+s.room;
+      if(!rooms[key]) rooms[key]={blk:s.block||s.blk, room:s.room, count:0};
+      rooms[key].count += 1;
+    });
+    const vals=Object.values(rooms);
+    const totalRooms=vals.length;
+    const avgOcc = totalRooms>0 ? (vals.reduce((s,r)=>s+r.count,0)/totalRooms) : 0;
+    const maxOcc = vals.length ? Math.max(...vals.map(r=>r.count)) : 0;
+    return {totalRooms, avgOcc, maxOcc};
+  })();
 
   // হাউজ টিউটর শুধু নিজের ব্লকের তথ্য দেখবেন — অন্য কোনো ব্লকের ছাত্র/স্টাফের তথ্য নয়
   const myBlk = getMyRestrictedBlock();
   if(myBlk){
     blkData = blkData.filter(b=>b.name==="ব্লক "+myBlk);
     topOffenders = topOffenders.filter(o=>o.blk===myBlk);
+    topPerformers = topPerformers.filter(o=>o.blk===myBlk);
     staffPerf = staffPerf.filter(s=>s.blk===myBlk);
   }
 
   const checkPct= d.checkTotal>0 ? Math.round(d.checkDone/d.checkTotal*100) : 0;
+  const staffAvgPct = staffPerf.length>0 ? Math.round(staffPerf.reduce((s,x)=>s+x.pct,0)/staffPerf.length) : 100;
+
+  // ══ নির্বাহী সারসংক্ষেপ — সার্বিক স্কোর ও মূল্যায়ন (হোস্টেল পরিদর্শকের দৃষ্টিভঙ্গিতে) ══
+  const compositeScore = Math.round((d.attendance*0.35) + (checkPct*0.35) + (staffAvgPct*0.20) + (Math.max(0,100-bhMinus)*0.10));
+  let rating, ratingColor;
+  if(compositeScore>=85){ rating='চমৎকার'; ratingColor='#2f9e5c'; }
+  else if(compositeScore>=70){ rating='সন্তোষজনক'; ratingColor='#a9822f'; }
+  else if(compositeScore>=50){ rating='মাঝারি — নজরদারি প্রয়োজন'; ratingColor='#d68a1f'; }
+  else{ rating='উদ্বেগজনক — তাৎক্ষণিক পদক্ষেপ প্রয়োজন'; ratingColor='#c94545'; }
+
+  const execParts=[];
+  execParts.push(`${periodLabel}র সময়সীমায় মোট ${bnR(totalStudents)} জন ছাত্রের মধ্যে ${bnR(d.present)} জন (${bnR(d.attendance)}%) হোস্টেলে উপস্থিত ছিল এবং ${bnR(d.leave)} জন অনুমোদিত ছুটিতে ছিল।`);
+  execParts.push(`মোট ${bnR(d.checkTotal)}টি নির্ধারিত রুটিন কাজের মধ্যে ${bnR(d.checkDone)}টি (${bnR(checkPct)}%) সম্পন্ন হয়েছে, যা হাউজ টিউটরদের গড় কর্মদক্ষতা ${bnR(staffAvgPct)}% নির্দেশ করে।`);
+  if(bhMinus>0) execParts.push(`আচরণগত দিক থেকে মোট ${bnR(bhMinus)} পয়েন্ট কর্তন করা হয়েছে${bhPlus>0 ? ', পাশাপাশি '+bnR(bhPlus)+' পয়েন্ট প্রশংসাসূচকভাবে যোগ হয়েছে' : ''}।`);
+  else execParts.push(`এই সময়ে উল্লেখযোগ্য কোনো নেতিবাচক আচরণগত রেকর্ড পাওয়া যায়নি, যা ইতিবাচক নির্দেশক।`);
+  if(d.sick>0) execParts.push(`বর্তমানে ${bnR(d.sick)} জন ছাত্র চিকিৎসাধীন অবস্থায় রয়েছে, যাদের স্বাস্থ্য পর্যবেক্ষণ চলমান।`);
+  const execText = execParts.join(' ');
+
+  // ══ পরিদর্শকের মন্তব্য ও সুপারিশ — সীমাবদ্ধতা/ঝুঁকির থ্রেশহোল্ড অনুযায়ী স্বয়ংক্রিয়ভাবে তৈরি ══
+  const notes=[];
+  if(d.attendance<85 && totalStudents>0) notes.push('উপস্থিতির হার প্রত্যাশিত মাত্রার (৮৫%+) নিচে — অনুপস্থিতির কারণ পর্যালোচনা করা প্রয়োজন।');
+  if(checkPct<80) notes.push('দৈনিক রুটিন চেকলিস্ট সম্পন্নের হার কম — সংশ্লিষ্ট হাউজ টিউটরদের সাথে যোগাযোগ করে কারণ নির্ণয় করুন।');
+  if(staffAvgPct<80) notes.push('কিছু হাউজ টিউটরের সময়মতো রিপোর্ট জমাদানের হার প্রত্যাশিত মানের নিচে।');
+  if(bhMinus - bhMinusPrev > 5) notes.push('পূর্ববর্তী সময়ের তুলনায় আচরণগত পয়েন্ট কর্তন উল্লেখযোগ্যভাবে বেড়েছে — কারণ অনুসন্ধান জরুরি।');
+  if(d.sick>0) notes.push('অসুস্থ ছাত্রদের নিয়মিত ফলোআপ ও চিকিৎসা নিশ্চিত করুন।');
+  if(roomStats.maxOcc>0 && roomStats.avgOcc>0 && roomStats.maxOcc > roomStats.avgOcc*1.5) notes.push('কিছু রুমে গড় ঘনত্বের তুলনায় উল্লেখযোগ্য বেশি ছাত্র রয়েছে — রুম বণ্টন পুনর্বিবেচনার সুযোগ আছে।');
+  if(notes.length===0) notes.push('সার্বিকভাবে সবগুলো সূচক সন্তোষজনক পর্যায়ে রয়েছে — বর্তমান মান বজায় রাখার পরামর্শ দেওয়া হলো।');
+
+  const genAt = new Date();
+  const genAtStr = bnR(genAt.getDate())+'/'+bnR(genAt.getMonth()+1)+'/'+bnR(genAt.getFullYear())+' — '+bnR(genAt.getHours()%12||12)+':'+bnR(String(genAt.getMinutes()).padStart(2,'0'))+' '+(genAt.getHours()<12?'AM':'PM');
+
+  // শেয়ার/এক্সপোর্টের জন্য প্লেইন-টেক্সট সারসংক্ষেপ তৈরি ও গ্লোবালে সংরক্ষণ
+  RP_LAST_TEXT = [
+    '📊 হোস্টেল সামগ্রিক প্রতিবেদন',
+    'রিপোর্ট আইডি: '+rpReportId()+'  |  সময়কাল: '+periodLabel+'  |  তৈরি: '+genAtStr,
+    (myBlk ? 'পরিসর: ব্লক '+myBlk : 'পরিসর: সমস্ত হোস্টেল'),
+    '',
+    'নির্বাহী সারসংক্ষেপ ('+rating+', স্কোর '+compositeScore+'/১০০):',
+    execText,
+    '',
+    'মূল সূচক:',
+    '• উপস্থিত ছাত্র: '+present+'/'+totalStudents+' ('+d.attendance+'%)',
+    '• চেকলিস্ট সম্পন্ন: '+d.checkDone+'/'+d.checkTotal+' ('+checkPct+'%)',
+    '• আচরণ পয়েন্ট কর্তন: '+d.bhMinus+'  |  যোগ: +'+d.bhPlus,
+    '• অসুস্থ ছাত্র: '+d.sick+'  |  ছুটিতে: '+d.leave,
+    '• স্টাফ গড় দক্ষতা: '+staffAvgPct+'%',
+    '',
+    'পরিদর্শকের সুপারিশ:',
+    notes.map(n=>'• '+n).join('\n'),
+  ].join('\n');
 
   document.getElementById("rp-content").innerHTML=`
+    <!-- রিপোর্ট মেটাডেটা ব্যার -->
+    <div class="rp-meta-bar">
+      <div class="rp-meta-item">🆔 রিপোর্ট আইডি: <b>${rpReportId()}</b></div>
+      <div class="rp-meta-item">🕐 তৈরির সময়: <b>${genAtStr}</b></div>
+      <div class="rp-meta-item">🔎 পরিসর: <b>${myBlk ? 'ব্লক '+myBlk : 'সমস্ত হোস্টেল'}</b></div>
+      <div class="rp-meta-item">📐 পদ্ধতি: <b>রিয়েল-টাইম ডেটা বিশ্লেষণ</b></div>
+    </div>
+
+    <!-- নির্বাহী সারসংক্ষেপ -->
+    <div class="rp-exec-card">
+      <div class="rp-exec-hd">
+        <div class="rp-exec-title">🧭 নির্বাহী সারসংক্ষেপ</div>
+        <div class="rp-exec-rating" style="background:${ratingColor}22;color:${ratingColor}">${rating}</div>
+      </div>
+      <div class="rp-exec-text">${execText}</div>
+      <div class="rp-exec-score-row">
+        <div class="rp-exec-score"><div class="rp-exec-score-num">${bnR(compositeScore)}</div><div class="rp-exec-score-lbl">সার্বিক স্কোর /১০০</div></div>
+        <div class="rp-exec-score"><div class="rp-exec-score-num">${bnR(d.attendance)}%</div><div class="rp-exec-score-lbl">উপস্থিতির হার</div></div>
+        <div class="rp-exec-score"><div class="rp-exec-score-num">${bnR(checkPct)}%</div><div class="rp-exec-score-lbl">রুটিন সম্পন্ন</div></div>
+        <div class="rp-exec-score"><div class="rp-exec-score-num">${bnR(staffAvgPct)}%</div><div class="rp-exec-score-lbl">স্টাফ দক্ষতা</div></div>
+      </div>
+    </div>
     <!-- মূল স্ট্যাট -->
     <div class="rp-section">
       <div class="rp-section-title">📊 ${periodLabel}র সারসংক্ষেপ</div>
@@ -6831,7 +7177,18 @@ function rpRender(){
           <div class="rp-big-num" style="color:#c94545">${bnR(d.bhMinus)}</div>
           <div class="rp-big-lbl">পয়েন্ট কাটা</div>
           <div class="rp-big-sub" style="color:#2f9e5c">+${bnR(d.bhPlus)} পয়েন্ট যোগ</div>
+          <div style="margin-top:5px">${rpDeltaBadge(bhMinus, bhMinusPrev, false)}</div>
         </div>
+      </div>
+    </div>
+
+    <!-- হোস্টেলের সক্ষমতা ও ধারণক্ষমতা -->
+    <div class="rp-section">
+      <div class="rp-section-title">🏘️ রুম ও ধারণক্ষমতা বিশ্লেষণ</div>
+      <div class="rp-mini-grid">
+        <div class="rp-mini-card"><div class="rp-mini-num" style="color:#2b7fd6">${bnR(roomStats.totalRooms)}</div><div class="rp-mini-lbl">ব্যবহৃত রুম</div></div>
+        <div class="rp-mini-card"><div class="rp-mini-num" style="color:#a9822f">${bnR(Math.round(roomStats.avgOcc*10)/10)}</div><div class="rp-mini-lbl">গড় জনসংখ্যা/রুম</div></div>
+        <div class="rp-mini-card"><div class="rp-mini-num" style="color:#c94545">${bnR(roomStats.maxOcc)}</div><div class="rp-mini-lbl">সর্বোচ্চ ঘনত্বের রুম</div></div>
       </div>
     </div>
 
@@ -6871,6 +7228,45 @@ function rpRender(){
             <div class="rp-list-badge" style="background:${colors[i]}22;color:${colors[i]}">${s.pts} পয়েন্ট</div>
           </div>`;
         }).join("")}
+        ${topOffenders.length===0 ? '<div style="padding:16px;text-align:center;font-size:12px;color:#8b98a3;">এই সময়ে কোনো নেতিবাচক রেকর্ড নেই</div>' : ''}
+      </div>
+    </div>
+
+    <!-- প্রশংসনীয় ছাত্র -->
+    <div class="rp-section">
+      <div class="rp-section-title">🌟 সর্বোচ্চ প্রশংসনীয় ছাত্র</div>
+      <div class="rp-list-card">
+        ${topPerformers.map((s,i)=>{
+          const colors=["#2f9e5c","#2b7fd6","#5c6f7a"];
+          const ranks=["১ম","২য়","৩য়"];
+          return `<div class="rp-list-row">
+            <div class="rp-list-rank" style="background:${colors[i]}22;color:${colors[i]}">${ranks[i]}</div>
+            <div style="flex:1;min-width:0;">
+              <div class="rp-list-name">${s.name}</div>
+              <div class="rp-list-sub">${CLASS_BN[s.cls]} শ্রেণী • ব্লক ${s.blk} • ${s.reason}</div>
+            </div>
+            <div class="rp-list-badge" style="background:${colors[i]}22;color:${colors[i]}">+${s.pts} পয়েন্ট</div>
+          </div>`;
+        }).join("")}
+        ${topPerformers.length===0 ? '<div style="padding:16px;text-align:center;font-size:12px;color:#8b98a3;">এই সময়ে কোনো ইতিবাচক রেকর্ড নেই</div>' : ''}
+      </div>
+    </div>
+
+    <!-- ক্যাটাগরি অনুযায়ী আচরণ বিশ্লেষণ -->
+    <div class="rp-section">
+      <div class="rp-section-title">🗂️ ক্যাটাগরি অনুযায়ী আচরণ বিশ্লেষণ</div>
+      <div class="rp-table-card">
+        <div class="rp-table-row hd"><div class="rp-table-cat">ক্যাটাগরি</div><div class="rp-table-count">সংখ্যা</div><div class="rp-table-pts">নিট পয়েন্ট</div></div>
+        ${catBreakdown.map(c=>{
+          const label=(typeof BH_CAT_LABELS!=='undefined' && BH_CAT_LABELS[c.cat]) || c.cat;
+          const color = c.pts<0 ? '#c94545' : (c.pts>0 ? '#2f9e5c' : '#5c6f7a');
+          return `<div class="rp-table-row">
+            <div class="rp-table-cat">${label}</div>
+            <div class="rp-table-count">${bnR(c.count)}</div>
+            <div class="rp-table-pts" style="color:${color}">${c.pts>0?'+':''}${bnR(c.pts)}</div>
+          </div>`;
+        }).join("")}
+        ${catBreakdown.length===0 ? '<div style="padding:16px;text-align:center;font-size:12px;color:#8b98a3;">এই সময়ে কোনো আচরণ রেকর্ড নেই</div>' : ''}
       </div>
     </div>
 
@@ -6878,7 +7274,10 @@ function rpRender(){
     <div class="rp-section">
       <div class="rp-section-title">👥 হাউজ টিউটর পারফরম্যান্স</div>
       <div class="rp-bar-card">
-        <div class="rp-bar-title">চেকলিস্ট সম্পন্নের হার</div>
+        <div class="rp-bar-title" style="display:flex;justify-content:space-between;align-items:center;">
+          <span>চেকলিস্ট সম্পন্নের হার — গড় ${bnR(staffAvgPct)}%</span>
+          ${rpDeltaBadge(staffAvgPct, staffAvgPctPrev, true)}
+        </div>
         ${staffPerf.map(s=>{
           const color=s.pct>=90?"#2f9e5c":s.pct>=80?"#a9822f":"#c94545";
           return `<div class="rp-bar-row">
@@ -6909,11 +7308,35 @@ function rpRender(){
           <div class="rp-big-sub" style="color:#5c6f7a">অনুমোদিত</div>
         </div>
       </div>
+    </div>
+
+    <!-- পরিদর্শকের মন্তব্য ও সুপারিশ -->
+    <div class="rp-note-card">
+      <div class="rp-note-title">🔍 পরিদর্শকের মন্তব্য ও সুপারিশ</div>
+      ${notes.map(n=>`<div class="rp-note-item">${n}</div>`).join("")}
+    </div>
+
+    <div class="rp-footer-note">
+      এই প্রতিবেদনটি হোস্টেল ম্যানেজমেন্ট সিস্টেমের রিয়েল-টাইম ডেটাবেস থেকে স্বয়ংক্রিয়ভাবে তৈরি হয়েছে।<br/>
+      রিপোর্ট আইডি: ${rpReportId()} • মোট ${bnR(totalStudents)} জন ছাত্র ও ${bnR((typeof USERS!=='undefined'?USERS.asst.length:0))} জন স্টাফের তথ্য বিশ্লেষণ করে প্রস্তুত।
     </div>`;
 }
 
 function rpExport(){
-  alert("📤 রিপোর্ট শেয়ার ফিচার শীঘ্রই সম্পন্ন হবে।\n\nএখন স্ক্রিনশট নিয়ে শেয়ার করুন।");
+  const text = RP_LAST_TEXT || "রিপোর্ট এখনো প্রস্তুত হয়নি।";
+  if(navigator.share){
+    navigator.share({title:"হোস্টেল সামগ্রিক প্রতিবেদন", text}).catch(()=>{});
+    return;
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(()=>{
+      alert("📋 রিপোর্ট কপি হয়েছে — এখন যেকোনো অ্যাপে (WhatsApp, SMS ইত্যাদি) পেস্ট করে শেয়ার করতে পারবেন।");
+    }).catch(()=>{
+      alert("📤 এই ডিভাইসে সরাসরি শেয়ার সম্ভব হলো না।\n\nস্ক্রিনশট নিয়ে শেয়ার করুন।");
+    });
+    return;
+  }
+  alert("📤 এই ডিভাইসে সরাসরি শেয়ার সম্ভব হলো না।\n\nস্ক্রিনশট নিয়ে শেয়ার করুন।");
 }
 </script>
 
@@ -10113,6 +10536,9 @@ function ncCloseHistoryModal(){
 }
 
 async function ncRender(forceHistory){
+  const ncRaw = localStorage.getItem('hms_user');
+  const ncUser = ncRaw ? JSON.parse(ncRaw) : {};
+  const ncViewOnly = ncUser.role === 'asst'; // হাউস টিউটরগণ শুধু দেখতে পারবেন, এডিট করতে পারবেন না
   const cycle = hostelCycleKeys();
   const bnDate = d => bnNC(d.getDate())+" "+ncMonthsBn[d.getMonth()];
   document.getElementById('nc-date-sub').textContent = 'মাগরিব, '+bnDate(cycle.startDate)+' — মাগরিব, '+bnDate(cycle.endDate);
@@ -10138,18 +10564,22 @@ async function ncRender(forceHistory){
     html += `<div class="nc-block-hd" style="border-left:4px solid ${blkColors[blk]}">🏠 ব্লক ${blk} — ${bnNC(blkRows.length)} জন ত্রুটিযুক্ত</div>`;
     html += `<div class="nc-list-wrap">${blkRows.map(s=>{
       const ongoing = (ncActions[s.serial]||{}).ongoing;
-      const actionHtml = ongoing ? `
+      const actionHtml = ongoing ? (ncViewOnly ? `
+        <div class="nc-ongoing-banner">
+          <div class="nc-ongoing-banner-date">⏳ ${ncFmtDateBn(ongoing.untilDate)} পর্যন্ত চলমান</div>
+          <div class="nc-ongoing-banner-reason">${(ongoing.reason||'').replace(/</g,'&lt;')}</div>
+        </div>` : `
         <div class="nc-ongoing-banner">
           <div class="nc-ongoing-banner-date">⏳ ${ncFmtDateBn(ongoing.untilDate)} পর্যন্ত চলমান</div>
           <div class="nc-ongoing-banner-reason">${(ongoing.reason||'').replace(/</g,'&lt;')}</div>
         </div>
         <div class="nc-action-row">
           <button class="nc-action-btn end" onclick="event.stopPropagation();ncEndPunishment(${s.serial})">🏁 শাস্তি শেষ</button>
-        </div>` : `
+        </div>`) : (ncViewOnly ? '' : `
         <div class="nc-action-row">
           <button class="nc-action-btn done" onclick="event.stopPropagation();ncMarkHandled(${s.serial})">✅ ব্যবস্থা নেওয়া হয়েছে</button>
           <button class="nc-action-btn ongoing" onclick="event.stopPropagation();ncOpenOngoingModal(${s.serial},'${(s.name||'').replace(/'/g,"\\'")}')">⏳ ব্যবস্থা চলমান থাকবে</button>
-        </div>`;
+        </div>`);
       return `
       <div class="nc-row" onclick="showStudentProfile(${s.serial},'noncompliance')">
         <div class="nc-row-name">
@@ -10175,6 +10605,7 @@ async function ncRender(forceHistory){
 
 // "ব্যবস্থা নেওয়া হয়েছে" — আজকের জন্য এই ছাত্রকে তালিকা থেকে বাদ দেওয়া
 function ncMarkHandled(serial){
+  if(ncIsViewOnlyUser()) return;
   const todayKey = hostelCycleKeys().endKey;
   const rec = ncActions[serial] || {};
   rec.dismiss = rec.dismiss || {};
@@ -10183,10 +10614,16 @@ function ncMarkHandled(serial){
   fbSet('ncTaskActions/'+serial, rec);
   ncRender();
 }
+function ncIsViewOnlyUser(){
+  const raw = localStorage.getItem('hms_user');
+  const u = raw ? JSON.parse(raw) : {};
+  return u.role === 'asst';
+}
 
 // "ব্যবস্থা চলমান থাকবে" — তারিখ ও কারণ লেখার মডাল খোলা
 let ncOngoingTargetSerial = null;
 function ncOpenOngoingModal(serial, name){
+  if(ncIsViewOnlyUser()) return;
   ncOngoingTargetSerial = serial;
   document.getElementById('nc-ongoing-name').textContent = name || '—';
   document.getElementById('nc-ongoing-date').value = '';
@@ -10214,6 +10651,7 @@ function ncSaveOngoing(){
 
 // "শাস্তি শেষ" — চলমান শাস্তি রেকর্ড মুছে ফেলা
 function ncEndPunishment(serial){
+  if(ncIsViewOnlyUser()) return;
   if(!confirm('এই ছাত্রের শাস্তি শেষ হিসেবে চিহ্নিত করে তালিকা থেকে সরিয়ে দিতে চান?')) return;
   const rec = ncActions[serial] || {};
   delete rec.ongoing;
