@@ -4027,7 +4027,7 @@ function scToggleSick(serial){
     // নতুন স্বাস্থ্য রেকর্ড তৈরি (অথবা বিদ্যমান লিংক থাকলে সেটাই ব্যবহার)
     if(typeof hlRecords!=='undefined'){
       const note = scNotes[serial] || '';
-      const rec = {id:hlNextId++, stuName:stu.name.toUpperCase(), cls:stu.cls, blk:(stu.block||stu.blk), illness:note||'সাধারণ অসুস্থতা (বিস্তারিত নোট বাকি)', medicine:'—', dosage:'', status:'active', note:note, date:todayBnDate(), time:'আজ সকাল ৮:৪০-৯:৩০', by:user.name};
+      const rec = {id:hlNextId++, stuName:stu.name.toUpperCase(), cls:stu.cls, blk:(stu.block||stu.blk), illness:note||'সাধারণ অসুস্থতা (বিস্তারিত নোট বাকি)', medicine:'—', dosage:'', status:'active', note:note, date:todayBnDate(), time:'আজ সকাল ৮:৪০-৯:৩০', by:user.name, ts:Date.now()};
       hlRecords.unshift(rec);
       scSickLink[serial] = rec.id;
       fbPush('healthRecords', rec);
@@ -4587,20 +4587,93 @@ function toggleSportsCheck(ev){
   renderDashboard();
 }
 
-// ── অ্যালার্ট ডেটা ──
-const ALERTS = [
-  {type:'red', icon:'🚨', title:'রাতের হাজিরায় অনুপস্থিত', desc:'কাল রাতে রুম ৩০৫ — রাহিম (ক্লাস ৮) অনুপস্থিত ছিলেন।', time:'১২ ঘণ্টা আগে'},
-  {type:'amber', icon:'⚠️', title:'চেকলিস্ট জমা দেননি', desc:'হাউজ টিউটর ৩ — আসরের চেকলিস্ট এখনো জমা হয়নি।', time:'২ ঘণ্টা আগে'},
-  {type:'amber', icon:'🏥', title:'অসুস্থ ছাত্র', desc:'করিম (ক্লাস ৬) জ্বরে ভুগছেন — ওষুধ দেওয়া হয়েছে।', time:'৩ ঘণ্টা আগে'},
-];
+// ── অ্যালার্ট ডেটা (আগে স্থির/ডেমো ডেটা ছিল — এখন real records থেকে প্রতিবার গণনা করা হয়) ──
+function bnAlertTimeAgo(ts){
+  if(!ts) return '';
+  const diffMin = Math.floor((Date.now()-ts)/60000);
+  const bn = n => (typeof bnDigits==='function') ? bnDigits(n) : String(n);
+  if(diffMin < 1) return 'এইমাত্র';
+  if(diffMin < 60) return bn(diffMin)+' মিনিট আগে';
+  const hrs = Math.floor(diffMin/60);
+  if(hrs < 24) return bn(hrs)+' ঘণ্টা আগে';
+  return bn(Math.floor(hrs/24))+' দিন আগে';
+}
 
-// ── স্টাফ ডেটা ──
-const STAFF = [
-  {avatar:'🏠', name:'হাউজ টিউটর ১', duty:'ফজর – দুপুর ডিউটি', status:'ss-off', statusText:'বিশ্রামে'},
-  {avatar:'🏠', name:'হাউজ টিউটর ২', duty:'দুপুর – সন্ধ্যা ডিউটি', status:'ss-active', statusText:'দায়িত্বে'},
-  {avatar:'🏠', name:'হাউজ টিউটর ৩', duty:'সন্ধ্যা – রাত ডিউটি', status:'ss-pending', statusText:'চেকলিস্ট বাকি'},
-  {avatar:'🏠', name:'হাউজ টিউটর ৪', duty:'রাত ডিউটি', status:'ss-off', statusText:'বিশ্রামে'},
-];
+function buildDynamicAlerts(){
+  const myBlk = (typeof getMyRestrictedBlock==='function') ? getMyRestrictedBlock() : null;
+  const alerts = [];
+
+  if(typeof ogGetComplaints==='function'){
+    ogGetComplaints()
+      .filter(i=>!i.a.actionTaken && !i.a.resolved && (!myBlk || i.r.blk===myBlk))
+      .slice(0,2)
+      .forEach(i=>{
+        alerts.push({
+          type:'red', icon:'🚨',
+          title:'ব্যবস্থা নেওয়া হয়নি এমন অভিযোগ',
+          desc:i.r.stuName+' ('+(CLASS_BN[i.r.cls]||i.r.cls)+' শ্রেণী, ব্লক '+i.r.blk+') — '+i.r.desc,
+          time:bnAlertTimeAgo(i.r.ts),
+        });
+      });
+  }
+
+  if(typeof timelyRecords!=='undefined'){
+    const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+    const seenBlk = new Set();
+    timelyRecords
+      .filter(r=>typeof r.ts==='number' && r.ts>=todayStart.getTime() && r.onTime===false && (!myBlk || r.blk===myBlk))
+      .sort((a,b)=>b.ts-a.ts)
+      .forEach(r=>{
+        if(seenBlk.has(r.blk)) return; seenBlk.add(r.blk);
+        const staffUser = (typeof USERS!=='undefined') ? USERS.asst.find(u=>u.id===r.assignedId) : null;
+        alerts.push({
+          type:'amber', icon:'⚠️',
+          title:'চেকলিস্ট জমা দেননি',
+          desc:(staffUser?staffUser.name:'হাউজ টিউটর')+' — ব্লক '+r.blk+'-এর নিজের রিপোর্ট সময়মতো জমা হয়নি।',
+          time:bnAlertTimeAgo(r.ts),
+        });
+      });
+  }
+
+  if(typeof hlRecords!=='undefined'){
+    hlRecords
+      .filter(r=>(r.status==='active'||r.status==='recovering') && (!myBlk || r.blk===myBlk))
+      .slice(0,2)
+      .forEach(r=>{
+        alerts.push({
+          type:'amber', icon:'🏥',
+          title: r.status==='active' ? 'অসুস্থ ছাত্র' : 'সুস্থ হওয়ার পথে থাকা ছাত্র',
+          desc:r.stuName+' ('+(CLASS_BN[r.cls]||r.cls)+' শ্রেণী) — '+r.illness+(r.medicine&&r.medicine!=='—' ? ' — ওষুধ দেওয়া হয়েছে।' : '।'),
+          time:r.time||'',
+        });
+      });
+  }
+
+  return alerts;
+}
+
+// ── স্টাফ ডেটা (আগে স্থির/ডেমো ডেটা ছিল — এখন আজকের real সময়মতো-রিপোর্ট লগ থেকে প্রতিটি ব্লকের হাউজ টিউটরের বর্তমান স্ট্যাটাস বের করা হয়) ──
+function buildDynamicStaffStatus(){
+  const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+  return (typeof USERS!=='undefined' ? USERS.asst : []).map(u=>{
+    const blk = ASST_BLOCK_MAP[u.id];
+    const todaysLogs = (typeof timelyRecords!=='undefined' ? timelyRecords : [])
+      .filter(r=>r.assignedId===u.id && typeof r.ts==='number' && r.ts>=todayStart.getTime())
+      .sort((a,b)=>b.ts-a.ts);
+
+    let status='ss-off', statusText='এখনও রিপোর্ট আসেনি';
+    if(todaysLogs.length){
+      if(todaysLogs[0].onTime){ status='ss-active'; statusText='সক্রিয় — সময়মতো রিপোর্ট দিচ্ছেন'; }
+      else { status='ss-pending'; statusText='চেকলিস্ট বাকি'; }
+    }
+    return {
+      avatar:'🏠',
+      name:u.name,
+      duty: 'ব্লক '+blk+(BLOCKS[blk]?(' — '+BLOCKS[blk].floor):''),
+      status, statusText,
+    };
+  });
+}
 
 // ── পেজ রেন্ডার ──
 function renderDashboard(){
@@ -4876,8 +4949,9 @@ function renderDashboard(){
       <div class="ri-status ${r.status}">${statusIcon[r.status]}</div>
     </div>`).join('');
 
-  // অ্যালার্ট
-  document.getElementById('alertsSection').innerHTML = ALERTS.map(a=>`
+  // অ্যালার্ট (real ডেটা থেকে প্রতিবার নতুন করে তৈরি)
+  const DYNAMIC_ALERTS = buildDynamicAlerts();
+  document.getElementById('alertsSection').innerHTML = DYNAMIC_ALERTS.length ? DYNAMIC_ALERTS.map(a=>`
     <div class="alert-item ${a.type}">
       <div class="alert-icon">${a.icon}</div>
       <div class="alert-body">
@@ -4885,15 +4959,16 @@ function renderDashboard(){
         <div class="alert-desc">${a.desc}</div>
         <div class="alert-time">${a.time}</div>
       </div>
-    </div>`).join('');
+    </div>`).join('') : `<div style="text-align:center;padding:20px 16px;color:#8b98a3;font-size:12px;">✅ এই মুহূর্তে কোনো সক্রিয় অ্যালার্ট নেই</div>`;
 
-  // স্টাফ সেকশন
+  // স্টাফ সেকশন (real ডেটা থেকে প্রতিবার নতুন করে তৈরি)
   if(cfg.showStaff){
+    const DYNAMIC_STAFF = buildDynamicStaffStatus();
     document.getElementById('staffSection').innerHTML = `
       <div class="section-header">👥 হাউজ টিউটর স্ট্যাটাস</div>
       <div class="staff-section">
         <div class="staff-card">
-          ${STAFF.map(s=>`
+          ${DYNAMIC_STAFF.map(s=>`
             <div class="staff-item">
               <div class="staff-avatar" style="background:#faf8f2;border:1px solid #e2dbc7">${s.avatar}</div>
               <div class="staff-info">
@@ -4930,7 +5005,7 @@ function renderDashboard(){
   }
 
   // নোটিফিকেশন ডট
-  if(ALERTS.length > 0) document.getElementById('notifDot').style.display='block';
+  if(DYNAMIC_ALERTS.length > 0) document.getElementById('notifDot').style.display='block';
   // ব্লক কার্ড
   renderDashBlockCards();
   if(typeof rkRenderDashWidget==='function') rkRenderDashWidget();
@@ -4996,7 +5071,7 @@ function goBlockRooms(blk){ brCurrentBlock=blk; brOpenRooms={}; brRenderPage(); 
 function goRooms(){ rmInit(); showPage("rooms"); }
 function goRanking(){ rkRender(); showPage("ranking"); }
 function goStaffKpi(){ skRender(); showPage("staff-kpi"); }
-function showAlerts(){alert('🔔 '+ALERTS.length+'টি সক্রিয় অ্যালার্ট আছে।');}
+function showAlerts(){alert('🔔 '+buildDynamicAlerts().length+'টি সক্রিয় অ্যালার্ট আছে।');}
 function showProfile(){
   const raw = localStorage.getItem('hms_user');
   const u = raw ? JSON.parse(raw) : {};
@@ -6361,10 +6436,7 @@ function attSubmit(){
 
 <script>
 const bnH=n=>String(n).replace(/\d/g,x=>"০১২৩৪৫৬৭৮৯"[x]);
-let hlRecords=[
-  {id:1,stuName:"RAKIBUL MUNSHI",cls:"VIII",blk:"B",illness:"জ্বর",medicine:"প্যারাসিটামল ৫০০mg",dosage:"দিনে ৩ বার",status:"active",note:"দুই দিন ধরে জ্বর, ১০২ ডিগ্রি।",time:"আজ সকাল",by:"আবুল হাসান স্যার"},
-  {id:2,stuName:"MD.ADOL",cls:"IX",blk:"C",illness:"সর্দি-কাশি",medicine:"অ্যান্টিহিস্টামিন",dosage:"রাতে ১ বার",status:"recovering",note:"ভালো হচ্ছে।",time:"গতকাল",by:"শরিফুল ইসলাম স্যার"},
-];
+let hlRecords=[];
 let hlFilterVal="all", hlNextId=3;
 let hlFbLoaded=false;
 
@@ -6443,7 +6515,9 @@ function hlSave(){
   const raw=localStorage.getItem("hms_user");
   const u=raw?JSON.parse(raw):{name:"ডেমো"};
   const opt=stuSel.options[stuSel.selectedIndex];
-  hlRecords.unshift({id:hlNextId++,stuName:stuName.toUpperCase(),cls:opt.dataset.cls||"",blk:opt.dataset.blk||"",illness,medicine,dosage,status,note,time:"এইমাত্র",by:u.name});
+  const newRec = {id:hlNextId++,stuName:stuName.toUpperCase(),cls:opt.dataset.cls||"",blk:opt.dataset.blk||"",illness,medicine,dosage,status,note,time:"এইমাত্র",by:u.name,ts:Date.now()};
+  hlRecords.unshift(newRec);
+  if(typeof fbPush==="function") fbPush('healthRecords', newRec);
   document.getElementById("hl-stu-select").value="";
   document.getElementById("hl-illness").value="";
   document.getElementById("hl-medicine").value="";
@@ -6596,38 +6670,69 @@ function rpSetPeriod(p,el){
   rpRender();
 }
 
+function rpPeriodRange(period){
+  const now = new Date();
+  let start;
+  if(period==='today'){ start = new Date(now); start.setHours(0,0,0,0); }
+  else if(period==='week'){ start = new Date(now.getTime() - 7*86400000); }
+  else { start = new Date(now.getFullYear(), now.getMonth(), 1); }
+  return {startTs:start.getTime(), endTs:now.getTime()};
+}
+
 function rpRender(){
-  // পিরিয়ড অনুযায়ী ডেটা
-  const data = {
-    today: {present:98,absent:2,leave:3,sick:1,checkDone:7,checkTotal:12,bhMinus:18,bhPlus:5,attendance:96},
-    week:  {present:95,absent:4,leave:6,sick:2,checkDone:58,checkTotal:84,bhMinus:34,bhPlus:12,attendance:93},
-    month: {present:93,absent:5,leave:12,sick:3,checkDone:210,checkTotal:336,bhMinus:87,bhPlus:28,attendance:91},
+  // পিরিয়ড অনুযায়ী real ডেটা থেকে হিসাব (আগে এগুলো স্থির/ডেমো সংখ্যা ছিল)
+  const {startTs, endTs} = rpPeriodRange(rpPeriod);
+  const bhScoped = (typeof bhRecords!=='undefined' ? bhRecords : []).filter(r=>typeof r.ts==='number' && r.ts>=startTs && r.ts<=endTs);
+  const bhMinus = bhScoped.filter(r=>r.type==='minus').reduce((s,r)=>s+(r.pts||0),0);
+  const bhPlus  = bhScoped.filter(r=>r.type==='plus').reduce((s,r)=>s+(r.pts||0),0);
+
+  const onLeaveCount = (typeof lvRecords!=='undefined' && typeof lvIsActiveToday==='function')
+    ? lvRecords.filter(r=>lvIsActiveToday(r)).length : 0;
+  const sickCount = (typeof hlRecords!=='undefined') ? hlRecords.filter(r=>r.status==='active').length : 0;
+
+  const totalStudents = allStudents.length;
+  const present = Math.max(0, totalStudents - onLeaveCount);
+  const absentSet = new Set(bhScoped.filter(r=>r.type==='minus' && (r.cat==='namaz'||r.cat==='arabic'||r.cat==='classSkip')).map(r=>r.stuName));
+  const attendance = totalStudents>0 ? Math.round(present/totalStudents*100) : 0;
+
+  const checkDone = ROUTINE.filter(r=>r.status==='done').length;
+  const checkTotal = ROUTINE.length;
+
+  const d = {
+    present, absent: absentSet.size, leave: onLeaveCount, sick: sickCount,
+    checkDone, checkTotal, bhMinus, bhPlus, attendance,
   };
-  const d=data[rpPeriod];
   const periodLabel=rpPeriod==="today"?"আজ":rpPeriod==="week"?"এই সপ্তাহ":"এই মাস";
 
-  // ব্লক উপস্থিতি
-  let blkData=[
-    {name:"ব্লক A",total:37,present:36,color:"#2f9e5c"},
-    {name:"ব্লক B",total:22,present:21,color:"#8258c9"},
-    {name:"ব্লক C",total:19,present:18,color:"#1f9797"},
-    {name:"ব্লক D",total:24,present:23,color:"#a9822f"},
-  ];
+  // ব্লক উপস্থিতি (real allStudents ও real ছুটির তালিকা থেকে)
+  let blkData=['A','B','C','D'].map(blk=>{
+    const totalBlk = allStudents.filter(s=>(s.block||s.blk)===blk).length;
+    const leaveBlk = (typeof lvRecords!=='undefined' && typeof lvIsActiveToday==='function')
+      ? lvRecords.filter(r=>lvIsActiveToday(r) && r.blk===blk).length : 0;
+    return {name:"ব্লক "+blk, total: totalBlk, present: Math.max(0, totalBlk-leaveBlk), color: BLOCKS[blk] ? BLOCKS[blk].color : '#5c6f7a'};
+  }).filter(b=>b.total>0);
 
-  // আচরণ সমস্যা বেশি যাদের
-  let topOffenders=[
-    {name:"MD ABDULLAH",cls:"X",blk:"D",pts:-13,reason:"পলায়ন, নামাজ ফাঁকি"},
-    {name:"RAKIBUL MUNSHI",cls:"VIII",blk:"B",pts:-5,reason:"মারামারি"},
-    {name:"MD.ADOL",cls:"IX",blk:"C",pts:-3,reason:"নামাজ ফাঁকি"},
-  ];
+  // আচরণ সমস্যা বেশি যাদের (এই পিরিয়ডের real নেতিবাচক রেকর্ড থেকে)
+  let topOffenders=(()=>{
+    const map = {};
+    bhScoped.filter(r=>r.type==='minus').forEach(r=>{
+      if(!map[r.stuName]) map[r.stuName] = {name:r.stuName, cls:r.cls, blk:r.blk, pts:0, reasons:[]};
+      map[r.stuName].pts += (r.pts||0);
+      map[r.stuName].reasons.push((typeof BH_CAT_LABELS!=='undefined' && BH_CAT_LABELS[r.cat]) || r.cat);
+    });
+    return Object.values(map).sort((a,b)=>b.pts-a.pts).slice(0,3).map(o=>({
+      name:o.name, cls:o.cls, blk:o.blk, pts:-o.pts, reason:[...new Set(o.reasons)].join('، ')||'—'
+    }));
+  })();
 
-  // স্টাফ চেকলিস্ট পারফরম্যান্স
-  let staffPerf=[
-    {name:"শাহাদাত স্যার",blk:"A",pct:92},
-    {name:"আবুল হাসান স্যার",blk:"B",pct:88},
-    {name:"শরিফুল ইসলাম স্যার",blk:"C",pct:95},
-    {name:"নিজাম উদ্দিন স্যার",blk:"D",pct:78},
-  ];
+  // স্টাফ চেকলিস্ট পারফরম্যান্স (এই পিরিয়ডে real সময়মতো-রিপোর্ট লগ থেকে)
+  let staffPerf=(typeof USERS!=='undefined' ? USERS.asst : []).map(u=>{
+    const blk = ASST_BLOCK_MAP[u.id];
+    const logs = (typeof timelyRecords!=='undefined'?timelyRecords:[]).filter(r=>r.assignedId===u.id && typeof r.ts==='number' && r.ts>=startTs && r.ts<=endTs);
+    const onTime = logs.filter(r=>r.onTime).length;
+    const pct = logs.length>0 ? Math.round(onTime/logs.length*100) : 100;
+    return {name:u.name, blk, pct};
+  });
 
   // হাউজ টিউটর শুধু নিজের ব্লকের তথ্য দেখবেন — অন্য কোনো ব্লকের ছাত্র/স্টাফের তথ্য নয়
   const myBlk = getMyRestrictedBlock();
@@ -6637,7 +6742,7 @@ function rpRender(){
     staffPerf = staffPerf.filter(s=>s.blk===myBlk);
   }
 
-  const checkPct=Math.round(d.checkDone/d.checkTotal*100);
+  const checkPct= d.checkTotal>0 ? Math.round(d.checkDone/d.checkTotal*100) : 0;
 
   document.getElementById("rp-content").innerHTML=`
     <!-- মূল স্ট্যাট -->
@@ -9619,6 +9724,14 @@ async function rkRenderDashWidget(){
 .nc-widget-title{flex:1;font-size:12px;font-weight:700;color:#24313b;}
 .nc-widget-badge{font-size:13px;font-weight:700;color:#ffffff;background:#c94545;padding:2px 10px;border-radius:20px;}
 .nc-widget-sub{font-size:11px;color:#5c6f7a;margin-top:6px;}
+.nc-action-row{display:flex;gap:6px;margin-top:8px;}
+.nc-action-btn{flex:1;text-align:center;font-size:11px;font-weight:700;padding:7px 6px;border-radius:8px;border:none;cursor:pointer;}
+.nc-action-btn.done{background:#e6f2e8;color:#2f7a45;}
+.nc-action-btn.ongoing{background:#f7ecd6;color:#a9822f;}
+.nc-action-btn.end{background:#f9e3e3;color:#c94545;flex:none;padding:7px 12px;}
+.nc-ongoing-banner{margin-top:7px;background:#faf3e0;border:1px solid #f0dca6;border-radius:9px;padding:7px 9px;}
+.nc-ongoing-banner-date{font-size:11px;font-weight:700;color:#a9822f;}
+.nc-ongoing-banner-reason{font-size:11px;color:#5c6f7a;margin-top:2px;}
 </style>
 
 <div id="page-noncompliance" class="page" style="background:#faf8f2;min-height:100vh;padding-bottom:80px;">
@@ -9648,8 +9761,59 @@ async function rkRenderDashWidget(){
   </div>
 </div>
 
+<!-- "ব্যবস্থা চলমান থাকবে" — তারিখ ও কারণ লেখার মডাল -->
+<div class="modal-overlay hide" id="ncOngoingOverlay" onclick="if(event.target===this) ncCloseOngoingModal()" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9000;display:flex;align-items:flex-end;">
+  <div style="background:#ffffff;width:100%;border-radius:20px 20px 0 0;padding:20px;font-family:'Hind Siliguri',sans-serif;">
+    <div style="width:40px;height:4px;background:#e2dbc7;border-radius:2px;margin:0 auto 16px;"></div>
+    <div style="font-size:15px;font-weight:700;color:#24313b;margin-bottom:2px;">⏳ ব্যবস্থা চলমান থাকবে</div>
+    <div style="font-size:12px;color:#5c6f7a;margin-bottom:14px;" id="nc-ongoing-name">—</div>
+
+    <div style="margin-bottom:12px;">
+      <label style="font-size:12px;font-weight:600;color:#24313b;display:block;margin-bottom:5px;">কত তারিখ পর্যন্ত চলমান থাকবে</label>
+      <input type="date" id="nc-ongoing-date" style="width:100%;padding:10px;border:1px solid #e2dbc7;border-radius:9px;font-size:13px;font-family:inherit;box-sizing:border-box;"/>
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <label style="font-size:12px;font-weight:600;color:#24313b;display:block;margin-bottom:5px;">কী ব্যবস্থা গ্রহণ করা হয়েছে</label>
+      <textarea id="nc-ongoing-reason" rows="3" placeholder="যেমন: অভিভাবককে জানানো হয়েছে, অতিরিক্ত নামাজ শিক্ষা দেওয়া হচ্ছে..." style="width:100%;padding:10px;border:1px solid #e2dbc7;border-radius:9px;font-size:13px;font-family:inherit;box-sizing:border-box;resize:vertical;"></textarea>
+    </div>
+
+    <div style="display:flex;gap:8px;">
+      <button onclick="ncCloseOngoingModal()" style="flex:1;padding:12px;border-radius:10px;border:1px solid #e2dbc7;background:#ffffff;color:#5c6f7a;font-size:13px;font-weight:700;font-family:inherit;">বাতিল</button>
+      <button onclick="ncSaveOngoing()" style="flex:1;padding:12px;border-radius:10px;border:none;background:#a9822f;color:#ffffff;font-size:13px;font-weight:700;font-family:inherit;">সংরক্ষণ করুন</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const bnNC=n=>String(n).replace(/\d/g,x=>"০১২৩৪৫৬৭৮৯"[x]);
+const ncMonthsBn=["জানুয়ারি","ফেব্রুয়ারি","মার্চ","এপ্রিল","মে","জুন","জুলাই","আগস্ট","সেপ্টেম্বর","অক্টোবর","নভেম্বর","ডিসেম্বর"];
+function ncFmtDateBn(dateStr){
+  if(!dateStr) return '';
+  const [y,m,d]=dateStr.split('-').map(Number);
+  if(!y||!m||!d) return dateStr;
+  return bnNC(d)+' '+ncMonthsBn[m-1]+' '+bnNC(y);
+}
+
+// প্রতিটি ছাত্রের "ব্যবস্থা নেওয়া হয়েছে" (আজকের জন্য) ও "চলমান শাস্তি" (তারিখ+কারণসহ) রেকর্ড
+// { [serial]: { dismiss:{ [dateKey]:true }, ongoing:{ reason, untilDate, startDate } } }
+let ncActions = {};
+fbListen('ncTaskActions', data=>{
+  ncActions = data || {};
+  const pg = document.getElementById('page-noncompliance');
+  if(pg && pg.classList.contains('active')) ncRender();
+});
+
+// মেয়াদ পার হয়ে যাওয়া "চলমান শাস্তি" স্বয়ংক্রিয়ভাবে পরিষ্কার করা
+function ncCleanupExpiredOngoing(todayKey){
+  Object.keys(ncActions).forEach(serial=>{
+    const rec = ncActions[serial];
+    if(rec && rec.ongoing && rec.ongoing.untilDate < todayKey){
+      delete rec.ongoing;
+      fbSet('ncTaskActions/'+serial, rec);
+    }
+  });
+}
 
 // আজকের নির্দিষ্ট একটি ফায়ারবেস পাথ থেকে শুধু আজকের এন্ট্রি একবার পড়া
 // একটি মার্কিং-ভ্যালু (স্ট্রিং / গ্রুপ-অবজেক্ট / চেকবক্স-অবজেক্ট) থেকে যেকোনো META কনফিগ ব্যবহার করে
@@ -9743,16 +9907,33 @@ async function ncBuildTodayIssues(){
 
 function goNonCompliance(){ ncRender(); showPage('noncompliance'); }
 
+// dismiss/ongoing বিবেচনা করে চূড়ান্ত দৃশ্যমান তালিকা বানানো (পেজ ও ড্যাশবোর্ড উইজেট — দুই জায়গাতেই ব্যবহৃত)
+async function ncGetVisibleRows(){
+  const todayKey = hostelCycleKeys().endKey;
+  ncCleanupExpiredOngoing(todayKey);
+
+  let rows = await ncBuildTodayIssues();
+  rows = rows.filter(r => !(ncActions[r.serial] && ncActions[r.serial].dismiss && ncActions[r.serial].dismiss[todayKey]));
+
+  Object.keys(ncActions).forEach(serial=>{
+    const rec = ncActions[serial];
+    if(!rec || !rec.ongoing) return;
+    if(rows.some(r=>String(r.serial)===String(serial))) return;
+    const stu = allStudents.find(s=>String(s.serial)===String(serial));
+    if(stu) rows.push({...stu, issues:[]});
+  });
+  return rows;
+}
+
 async function ncRender(){
   const cycle = hostelCycleKeys();
-  const months=["জানুয়ারি","ফেব্রুয়ারি","মার্চ","এপ্রিল","মে","জুন","জুলাই","আগস্ট","সেপ্টেম্বর","অক্টোবর","নভেম্বর","ডিসেম্বর"];
-  const bnDate = d => bnNC(d.getDate())+" "+months[d.getMonth()];
+  const bnDate = d => bnNC(d.getDate())+" "+ncMonthsBn[d.getMonth()];
   document.getElementById('nc-date-sub').textContent = 'মাগরিব, '+bnDate(cycle.startDate)+' — মাগরিব, '+bnDate(cycle.endDate);
 
   const wrap = document.getElementById('nc-block-sections');
   wrap.innerHTML = '<div class="nc-empty">⏳ লোড হচ্ছে...</div>';
 
-  const rows = await ncBuildTodayIssues();
+  const rows = await ncGetVisibleRows();
   const totalIssues = rows.reduce((sum,r)=>sum+r.issues.length,0);
   document.getElementById('nc-stat-students').textContent = bnNC(rows.length);
   document.getElementById('nc-stat-issues').textContent = bnNC(totalIssues);
@@ -9768,25 +9949,91 @@ async function ncRender(){
     const blkRows = rows.filter(r=>(r.block||r.blk)===blk);
     if(blkRows.length===0) return;
     html += `<div class="nc-block-hd" style="border-left:4px solid ${blkColors[blk]}">🏠 ব্লক ${blk} — ${bnNC(blkRows.length)} জন ত্রুটিযুক্ত</div>`;
-    html += `<div class="nc-list-wrap">${blkRows.map(s=>`
+    html += `<div class="nc-list-wrap">${blkRows.map(s=>{
+      const ongoing = (ncActions[s.serial]||{}).ongoing;
+      const actionHtml = ongoing ? `
+        <div class="nc-ongoing-banner">
+          <div class="nc-ongoing-banner-date">⏳ ${ncFmtDateBn(ongoing.untilDate)} পর্যন্ত চলমান</div>
+          <div class="nc-ongoing-banner-reason">${(ongoing.reason||'').replace(/</g,'&lt;')}</div>
+        </div>
+        <div class="nc-action-row">
+          <button class="nc-action-btn end" onclick="event.stopPropagation();ncEndPunishment(${s.serial})">🏁 শাস্তি শেষ</button>
+        </div>` : `
+        <div class="nc-action-row">
+          <button class="nc-action-btn done" onclick="event.stopPropagation();ncMarkHandled(${s.serial})">✅ ব্যবস্থা নেওয়া হয়েছে</button>
+          <button class="nc-action-btn ongoing" onclick="event.stopPropagation();ncOpenOngoingModal(${s.serial},'${(s.name||'').replace(/'/g,"\\'")}')">⏳ ব্যবস্থা চলমান থাকবে</button>
+        </div>`;
+      return `
       <div class="nc-row" onclick="showStudentProfile(${s.serial},'noncompliance')">
         <div class="nc-row-name">
           <div class="nc-row-name-txt">${s.name}</div>
           <div class="nc-row-meta">${CLASS_BN[s.cls]} • রুম ${s.room}</div>
-          <div class="nc-row-issues">${s.issues.map(t=>`<span class="nc-tag">${t}</span>`).join('')}</div>
+          ${s.issues.length>0?`<div class="nc-row-issues">${s.issues.map(t=>`<span class="nc-tag">${t}</span>`).join('')}</div>`:''}
+          ${actionHtml}
         </div>
-        <div class="nc-row-count">${bnNC(s.issues.length)}</div>
-      </div>`).join('')}</div>`;
+        <div class="nc-row-count">${s.issues.length>0?bnNC(s.issues.length):''}</div>
+      </div>`;
+    }).join('')}</div>`;
   });
   wrap.innerHTML = html;
 }
+
+// "ব্যবস্থা নেওয়া হয়েছে" — আজকের জন্য এই ছাত্রকে তালিকা থেকে বাদ দেওয়া
+function ncMarkHandled(serial){
+  const todayKey = hostelCycleKeys().endKey;
+  const rec = ncActions[serial] || {};
+  rec.dismiss = rec.dismiss || {};
+  rec.dismiss[todayKey] = true;
+  ncActions[serial] = rec;
+  fbSet('ncTaskActions/'+serial, rec);
+  ncRender();
+}
+
+// "ব্যবস্থা চলমান থাকবে" — তারিখ ও কারণ লেখার মডাল খোলা
+let ncOngoingTargetSerial = null;
+function ncOpenOngoingModal(serial, name){
+  ncOngoingTargetSerial = serial;
+  document.getElementById('nc-ongoing-name').textContent = name || '—';
+  document.getElementById('nc-ongoing-date').value = '';
+  document.getElementById('nc-ongoing-reason').value = '';
+  document.getElementById('ncOngoingOverlay').classList.remove('hide');
+}
+function ncCloseOngoingModal(){
+  document.getElementById('ncOngoingOverlay').classList.add('hide');
+  ncOngoingTargetSerial = null;
+}
+function ncSaveOngoing(){
+  const untilDate = document.getElementById('nc-ongoing-date').value;
+  const reason = document.getElementById('nc-ongoing-reason').value.trim();
+  if(!untilDate){ alert('অনুগ্রহ করে কত তারিখ পর্যন্ত চলমান থাকবে তা নির্বাচন করুন।'); return; }
+  if(!reason){ alert('অনুগ্রহ করে কী ব্যবস্থা গ্রহণ করা হয়েছে তা লিখুন।'); return; }
+  const serial = ncOngoingTargetSerial;
+  if(serial==null) return;
+  const rec = ncActions[serial] || {};
+  rec.ongoing = { reason, untilDate, startDate: hostelCycleKeys().endKey };
+  ncActions[serial] = rec;
+  fbSet('ncTaskActions/'+serial, rec);
+  ncCloseOngoingModal();
+  ncRender();
+}
+
+// "শাস্তি শেষ" — চলমান শাস্তি রেকর্ড মুছে ফেলা
+function ncEndPunishment(serial){
+  if(!confirm('এই ছাত্রের শাস্তি শেষ হিসেবে চিহ্নিত করে তালিকা থেকে সরিয়ে দিতে চান?')) return;
+  const rec = ncActions[serial] || {};
+  delete rec.ongoing;
+  ncActions[serial] = rec;
+  fbSet('ncTaskActions/'+serial, rec);
+  ncRender();
+}
+
 
 // ড্যাশবোর্ডে ছোট উইজেট — হাউজ টিউটর ও হোস্টেল সুপার উভয়েই দেখতে পাবেন (সব ব্লক মিলিয়ে)
 async function ncRenderDashWidget(){
   const el=document.getElementById('dash-noncompliance-widget');
   if(!el) return;
   try{
-    const rows = await ncBuildTodayIssues();
+    const rows = await ncGetVisibleRows();
     if(rows.length===0){
       el.innerHTML = `<div class="nc-widget" onclick="goNonCompliance()">
         <div class="nc-widget-top"><span style="font-size:16px;">🎉</span><span class="nc-widget-title">আজকের অসম্পূর্ণ কাজ — সব ব্লক</span></div>
@@ -11601,7 +11848,7 @@ fbListen('roomData', data=>{
 const TEST_DATA_PATHS = [
   'namaz','namazMeta','cleanliness','cleanlinessHistory','uniform',
   'arabicClass','sickClassSkip','sickFollowup','healthRecords',
-  'behaviorRecords','blockDifficulty','complaintActions',
+  'behaviorRecords','blockDifficulty','complaintActions','ncTaskActions',
   'afternoonStudy','eveningStudy','nightStudyRest','timelyLog',
   'zohrLunch','zohrLunchFinalized','ishaDinner','ishaDinnerFinalized',
   'observations','observationMeta','staffKpi','sportsMarks',
