@@ -1399,6 +1399,18 @@ const NAMAZ_STATUS = {
 };
 const ASST_BLOCK_MAP = {asst01:'A', asst02:'B', asst03:'C', asst04:'D'};
 
+// ── অমুসলিম (হিন্দু) ছাত্র — নামাজ ও আরবি ক্লাস (কুরআন পড়া) সংক্রান্ত সব তালিকা/রিপোর্ট থেকে
+// স্বয়ংক্রিয়ভাবে বাদ পড়বে (মার্কিং পেজ, নন-কম্প্লায়েন্স, রুটিন প্রতিবেদন, হাউজ টিউটর স্ট্যাটাস — সব জায়গায়) ──
+const RELIGION_EXEMPT_STUDENTS = [
+  'UDVAB DAS ARNOB',       // ষষ্ঠ শ্রেণির অর্ণব দাস
+  'APON SUTRODHAR',        // সপ্তম শ্রেণীর আপন
+  'ANTOR KUMAR GHOSH',     // সপ্তম শ্রেণীর অন্তর দাস
+  'BISHWJIT BISWAS TIRTHO',// নবম শ্রেণীর বিশ্বজিৎ দাস
+];
+function nsIsReligionExempt(stu){
+  return !!(stu && RELIGION_EXEMPT_STUDENTS.includes((stu.name||'').toUpperCase()));
+}
+
 // ── হাউজ টিউটরের জন্য নিজের ব্লক ছাড়া অন্য কোনো ব্লকের তথ্য দেখানো হবে না ──
 // admin/super/arabic হলে null (কোনো ব্লক-সীমাবদ্ধতা নেই); asst হলে তার নিজের ব্লক ফেরত দেয়।
 function getMyRestrictedBlock(){
@@ -1437,7 +1449,7 @@ function nsSeedHistory(){
 let nsCurrentPrayer = 'ফজর';
 let nsCurrentStatus = null;
 
-function nsGetBlockStudents(){
+function nsGetBlockStudents(excludeReligionExempt){
   if(allStudents.length===0) assignRooms();
   const raw = localStorage.getItem('hms_user');
   const user = raw ? JSON.parse(raw) : {role:'super'};
@@ -1448,6 +1460,7 @@ function nsGetBlockStudents(){
   if(typeof lvRecords!=='undefined' && typeof lvIsActiveToday==='function'){
     students = students.filter(s => !lvRecords.some(r=>r.stuSerial===s.serial && lvIsActiveToday(r)));
   }
+  if(excludeReligionExempt) students = students.filter(s=>!nsIsReligionExempt(s));
   return {user, blk, students};
 }
 
@@ -1469,7 +1482,7 @@ function nsSyncTodayForDashboard(){
 }
 let nsUnsubscribe = null;
 function nsOpenStudentList(){
-  const {blk} = nsGetBlockStudents();
+  const {blk} = nsGetBlockStudents(true);
   document.getElementById('ns-page-title').textContent = nsCurrentPrayer+' সালাত';
   document.getElementById('ns-page-sub').textContent = blk ? ('ব্লক '+blk+' — '+BLOCKS[blk].supervisor) : 'সকল ব্লক';
   nsRenderList();
@@ -1510,7 +1523,7 @@ function nsToggle(serial, status){
   fbSet('namazHistory/'+serial+'/'+nsCurrentPrayer+'/late/'+dateKey, newStatus==='late' ? true : null);
   fbSet('namazHistory/'+serial+'/'+nsCurrentPrayer+'/qaza/'+dateKey, newStatus==='qaza' ? true : null);
 
-  const {students} = nsGetBlockStudents();
+  const {students} = nsGetBlockStudents(true);
   const stu = students.find(s=>s.serial===serial) || allStudents.find(s=>s.serial===serial);
   if(stu) nsToast(stu.name+' — '+(turningOn?NAMAZ_STATUS[status].label:'বাতিল করা হয়েছে'));
 }
@@ -1544,7 +1557,7 @@ function nsRenderRows(students){
 }
 
 function nsRenderList(){
-  const {blk, students} = nsGetBlockStudents();
+  const {blk, students} = nsGetBlockStudents(true);
   const marks = namazMarks[nsCurrentPrayer] || {};
   const bnN = n=>String(n).replace(/\d/g,x=>"০১২৩৪৫৬৭৮৯"[x]);
 
@@ -1569,7 +1582,7 @@ function nsRenderList(){
 }
 
 function nsShowFilteredList(status){
-  const {students} = nsGetBlockStudents();
+  const {students} = nsGetBlockStudents(true);
   const marks = namazMarks[nsCurrentPrayer] || {};
   const names = students.filter(s=>marks[s.serial]===status);
 
@@ -1590,7 +1603,7 @@ function nsShowFilteredList(status){
 }
 
 function nsShowReport(){
-  const {students} = nsGetBlockStudents();
+  const {students} = nsGetBlockStudents(true);
   const marks = namazMarks[nsCurrentPrayer] || {};
   const grouped = {ontime:[], late:[], qaza:[], none:[]};
   students.forEach(s=>{
@@ -1700,7 +1713,13 @@ function acGetBlockStudents(){
   const raw = localStorage.getItem('hms_user');
   const user = raw ? JSON.parse(raw) : {role:'super'};
   const blk = ARABIC_TEACHER_BLOCK_MAP[user.id] || null;
-  const students = blk ? allStudents.filter(s=>(s.block||s.blk)===blk) : allStudents;
+  let students = blk ? allStudents.filter(s=>(s.block||s.blk)===blk) : allStudents;
+  // ছুটিতে থাকা ছাত্রদের এই মডিউল থেকেও বাদ দেওয়া হয় (অন্যান্য মডিউলের মতোই)
+  if(typeof lvRecords!=='undefined' && typeof lvIsActiveToday==='function'){
+    students = students.filter(s => !lvRecords.some(r=>r.stuSerial===s.serial && lvIsActiveToday(r)));
+  }
+  // হিন্দু ছাত্ররা আরবি ক্লাস/কুরআন পড়ার তালিকা ও রিপোর্ট থেকে স্বয়ংক্রিয়ভাবে বাদ পড়বে
+  students = students.filter(s=>!nsIsReligionExempt(s));
   return {user, blk, students};
 }
 
@@ -2267,7 +2286,7 @@ function obCrossCheckRef(blk){
     const marks = (typeof namazMarks!=='undefined' && namazMarks[pr]) ? namazMarks[pr] : {};
     Object.keys(marks).forEach(serial=>{
       const stu = allStudents.find(s=>s.serial==serial);
-      if(stu && (stu.block||stu.blk)===blk && (marks[serial]==='late'||marks[serial]==='qaza')) count++;
+      if(stu && !nsIsReligionExempt(stu) && (stu.block||stu.blk)===blk && (marks[serial]==='late'||marks[serial]==='qaza')) count++;
     });
   });
   return count;
@@ -4724,7 +4743,7 @@ function renderDashboard(){
   // রুটিন — ফজর সালাত আইটেমের স্ট্যাটাস মার্কিং অগ্রগতি অনুযায়ী নির্ধারণ
   const fajrItem = ROUTINE.find(r=>r.id==='fajr-namaz');
   if(fajrItem){
-    const {blk, students} = nsGetBlockStudents();
+    const {blk, students} = nsGetBlockStudents(true);
     const marks = namazMarks['ফজর'] || {};
     const markedCount = students.filter(s=>marks[s.serial]).length;
     if(markedCount===0) fajrItem.status = 'pending';
@@ -4813,7 +4832,7 @@ function renderDashboard(){
     const rid = pr==='আসর' ? 'asr-namaz' : 'maghrib-namaz';
     const item = ROUTINE.find(r=>r.id===rid);
     if(!item) return;
-    const {students} = nsGetBlockStudents();
+    const {students} = nsGetBlockStudents(true);
     const marks = namazMarks[pr] || {};
     const markedCount = students.filter(s=>marks[s.serial]).length;
     if(markedCount===0) item.status = 'pending';
@@ -4961,24 +4980,14 @@ function renderDashboard(){
       </div>
     </div>`).join('') : `<div style="text-align:center;padding:20px 16px;color:#8b98a3;font-size:12px;">✅ এই মুহূর্তে কোনো সক্রিয় অ্যালার্ট নেই</div>`;
 
-  // স্টাফ সেকশন (real ডেটা থেকে প্রতিবার নতুন করে তৈরি)
+  // স্টাফ সেকশন — আজকের কাজভিত্তিক বিস্তারিত স্ট্যাটাস (ডাইনামিক, real ডেটা থেকে async লোড হয়)
   if(cfg.showStaff){
-    const DYNAMIC_STAFF = buildDynamicStaffStatus();
     document.getElementById('staffSection').innerHTML = `
       <div class="section-header">👥 হাউজ টিউটর স্ট্যাটাস</div>
-      <div class="staff-section">
-        <div class="staff-card">
-          ${DYNAMIC_STAFF.map(s=>`
-            <div class="staff-item">
-              <div class="staff-avatar" style="background:#faf8f2;border:1px solid #e2dbc7">${s.avatar}</div>
-              <div class="staff-info">
-                <div class="staff-name">${s.name}</div>
-                <div class="staff-duty">${s.duty}</div>
-              </div>
-              <div class="staff-status ${s.status}">${s.statusText}</div>
-            </div>`).join('')}
-        </div>
+      <div class="staff-section" id="staffSectionBody">
+        <div style="text-align:center;padding:18px 16px;color:#8b98a3;font-size:12px;">⏳ লোড হচ্ছে...</div>
       </div>`;
+    if(typeof htRenderStaffWidget==='function') htRenderStaffWidget();
   }
 
   // কুইক অ্যাকশন
@@ -9819,23 +9828,23 @@ function ncCleanupExpiredOngoing(todayKey){
 // একটি মার্কিং-ভ্যালু (স্ট্রিং / গ্রুপ-অবজেক্ট / চেকবক্স-অবজেক্ট) থেকে যেকোনো META কনফিগ ব্যবহার করে
 // স্বয়ংক্রিয়ভাবে নেতিবাচক (ptype:'minus') এন্ট্রিগুলো বের করে আনে। নতুন কোনো রিপোর্ট মডিউল যোগ হলে
 // এটি বাড়তি কোনো কোড ছাড়াই স্বয়ংক্রিয়ভাবে "আজকের অসম্পূর্ণ কাজ"-এ ধরা পড়বে, যতক্ষণ তার META-তে ptype থাকে।
-function ncMetaIssues(markValue, metaObj, prefix){
+function ncMetaIssues(markValue, metaObj, prefix, skipGroups){
   const issues = [];
   if(markValue==null || !metaObj) return issues;
   const pfx = prefix ? (prefix+' — ') : '';
   if(typeof markValue === 'string'){
     const m = metaObj[markValue];
-    if(m && m.ptype==='minus') issues.push(pfx+m.ico+' '+m.label);
+    if(m && m.ptype==='minus' && !(skipGroups && skipGroups.includes(m.group))) issues.push(pfx+m.ico+' '+m.label);
   } else if(typeof markValue === 'object'){
     Object.entries(markValue).forEach(([k,v])=>{
       if(v===true){
         // চেকবক্স-স্টাইল: কী নিজেই META-এর কী (যেমন nrMarks)
         const m = metaObj[k];
-        if(m && m.ptype==='minus') issues.push(pfx+m.ico+' '+m.label);
+        if(m && m.ptype==='minus' && !(skipGroups && skipGroups.includes(m.group))) issues.push(pfx+m.ico+' '+m.label);
       } else if(typeof v === 'string'){
         // গ্রুপ-স্টাইল: ভ্যালুটি META-এর কী (যেমন ccMarks, zlMarks, acMarks)
         const m = metaObj[v];
-        if(m && m.ptype==='minus') issues.push(pfx+m.ico+' '+m.label);
+        if(m && m.ptype==='minus' && !(skipGroups && skipGroups.includes(m.group))) issues.push(pfx+m.ico+' '+m.label);
       }
     });
   }
@@ -9888,14 +9897,16 @@ async function ncBuildTodayIssues(){
     const issues = [];
     issues.push(...ncMetaIssues(cc[sid], CC_META));
     issues.push(...ncMetaIssues(uf[sid], UF_OPTIONS));
-    issues.push(...ncMetaIssues(nsF[sid], NAMAZ_STATUS, 'ফজর'));
-    issues.push(...ncMetaIssues(nsA[sid], NAMAZ_STATUS, 'আসর'));
-    issues.push(...ncMetaIssues(nsM[sid], NAMAZ_STATUS, 'মাগরিব'));
-    issues.push(...ncMetaIssues(zl[sid], ZL_META));
-    issues.push(...ncMetaIssues(id[sid], ID_META));
+    if(!nsIsReligionExempt(s)){
+      issues.push(...ncMetaIssues(nsF[sid], NAMAZ_STATUS, 'ফজর'));
+      issues.push(...ncMetaIssues(nsA[sid], NAMAZ_STATUS, 'আসর'));
+      issues.push(...ncMetaIssues(nsM[sid], NAMAZ_STATUS, 'মাগরিব'));
+    }
+    issues.push(...ncMetaIssues(zl[sid], ZL_META, null, nsIsReligionExempt(s)?['prayer']:null));
+    issues.push(...ncMetaIssues(id[sid], ID_META, null, nsIsReligionExempt(s)?['prayer']:null));
     issues.push(...ncMetaIssues(es[sid], ES_OPTIONS));
     issues.push(...ncMetaIssues(nr[sid], NR_META));
-    issues.push(...ncMetaIssues(ac[sid], AC_OPTIONS));
+    if(!nsIsReligionExempt(s)) issues.push(...ncMetaIssues(ac[sid], AC_OPTIONS));
     issues.push(...ncMetaIssues(scMarksData[sid], SC_META));
 
     if(issues.length>0) result.push({...s, issues});
@@ -12030,8 +12041,8 @@ function erMarkReturned(id){
 // প্রতিটি রুটিন ক্যাটাগরি — নিজস্ব META কনফিগ পুনর্ব্যবহার করা হয়েছে, তাই নতুন কোনো স্ট্যাটাস
 // যোগ হলে (ptype:'minus'/'plus' দিয়ে চিহ্নিত) এখানেও স্বয়ংক্রিয়ভাবে চলে আসবে।
 const RP_FD_CATEGORIES = [
-  {id:'fajr',        label:'ফজর সালাত',                    icon:'🕌', startHour:5,  startMin:0,  path:'namaz',          prayer:'ফজর',    meta:()=>NAMAZ_STATUS},
-  {id:'arabic',      label:'আরবি ক্লাস',                    icon:'📖', startHour:7,  startMin:0,  path:'arabicClass',                     meta:()=>AC_OPTIONS},
+  {id:'fajr',        label:'ফজর সালাত',                    icon:'🕌', startHour:5,  startMin:0,  path:'namaz',          prayer:'ফজর',    meta:()=>NAMAZ_STATUS, studentsFilter: s=>!nsIsReligionExempt(s)},
+  {id:'arabic',      label:'আরবি ক্লাস',                    icon:'📖', startHour:7,  startMin:0,  path:'arabicClass',                     meta:()=>AC_OPTIONS, studentsFilter: s=>!nsIsReligionExempt(s)},
   {id:'cleanliness', label:'পরিচ্ছন্নতা ও সকালের পড়া',       icon:'🧹', startHour:7,  startMin:0,  path:'cleanliness',                     meta:()=>CC_META},
   {id:'uniform',     label:'ইউনিফর্ম পরে ক্লাসে যাওয়া',      icon:'👔', startHour:8,  startMin:0,  path:'uniform',                         meta:()=>UF_OPTIONS},
   {id:'sickclassskip', label:'অসুস্থতা ও ক্লাস ফাঁকি',      icon:'🏥', startHour:8,  startMin:40, path:'sickClassSkip', dataAdapter:raw=>raw.marks||{}, meta:()=>SC_META},
@@ -12039,8 +12050,8 @@ const RP_FD_CATEGORIES = [
   {id:'sickfollowup', label:'অসুস্থ শিক্ষার্থীদের খোঁজখবর',  icon:'🏥', startHour:13, startMin:0,  path:'sickFollowup',                    meta:()=>SF_COND,
     studentsFilter: s=>(typeof hlRecords!=='undefined') && hlRecords.some(r=>r.stuName===s.name.toUpperCase() && (r.status==='active'||r.status==='recovering'))},
   {id:'afternoon',   label:'দুপুরের পড়া ও বিশ্রাম',          icon:'📚', startHour:14, startMin:30, path:'afternoonStudy',                  meta:()=>AS_OPTIONS},
-  {id:'asr',         label:'আসর সালাত',                     icon:'🕌', startHour:16, startMin:0,  path:'namaz',          prayer:'আসর',    meta:()=>NAMAZ_STATUS},
-  {id:'maghrib',     label:'মাগরিব সালাত',                  icon:'🕌', startHour:18, startMin:0,  path:'namaz',          prayer:'মাগরিব', meta:()=>NAMAZ_STATUS},
+  {id:'asr',         label:'আসর সালাত',                     icon:'🕌', startHour:16, startMin:0,  path:'namaz',          prayer:'আসর',    meta:()=>NAMAZ_STATUS, studentsFilter: s=>!nsIsReligionExempt(s)},
+  {id:'maghrib',     label:'মাগরিব সালাত',                  icon:'🕌', startHour:18, startMin:0,  path:'namaz',          prayer:'মাগরিব', meta:()=>NAMAZ_STATUS, studentsFilter: s=>!nsIsReligionExempt(s)},
   {id:'evening',     label:'সন্ধ্যার পড়া',                   icon:'📝', startHour:18, startMin:0,  path:'eveningStudy',                    meta:()=>ES_OPTIONS},
   {id:'isha',        label:'এশা নামাজ ও রাতের খাবার',         icon:'🕌', startHour:20, startMin:0,  path:'ishaDinner',                      meta:()=>ID_META},
   {id:'night',       label:'রাতের পড়া ও বিশ্রাম',            icon:'🌙', startHour:21, startMin:0,  path:'nightStudyRest',                  meta:()=>NR_META},
@@ -12192,6 +12203,139 @@ async function rpFullDayRender(){
   if(sportsDue) html += await rpFdRenderSports(blocks, cycle);
 
   wrap.innerHTML = html;
+}
+</script>
+
+<!-- ড্যাশবোর্ড — "হাউজ টিউটর স্ট্যাটাস" এর কাজ-ভিত্তিক রিপোর্ট মডাল -->
+<div class="modal-overlay hide" id="htReportOverlay" onclick="if(event.target===this) htCloseReport()" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9000;align-items:flex-end;">
+  <div style="background:#ffffff;width:100%;max-height:78vh;overflow-y:auto;border-radius:20px 20px 0 0;padding:20px;font-family:'Hind Siliguri',sans-serif;">
+    <div style="width:40px;height:4px;background:#e2dbc7;border-radius:2px;margin:0 auto 16px;"></div>
+    <div style="font-size:15px;font-weight:700;color:#24313b;margin-bottom:12px;" id="ht-report-title">—</div>
+    <div id="ht-report-list"></div>
+    <button onclick="htCloseReport()" style="width:100%;margin-top:14px;padding:12px;border-radius:10px;border:1px solid #e2dbc7;background:#faf8f2;color:#5c6f7a;font-size:13px;font-weight:700;font-family:inherit;">বন্ধ করুন</button>
+  </div>
+</div>
+
+<script>
+// ── ড্যাশবোর্ড "হাউজ টিউটর স্ট্যাটাস" — প্রতিটি হাউজ টিউটর আজ কোন কোন কাজ করেছেন/করেননি (ডাইনামিক) ──
+// RP_FD_CATEGORIES ও ncFetchDate/rpFdGroup পুনর্ব্যবহার করা হয়েছে, তাই নতুন কোনো রুটিন-ক্যাটাগরি
+// যোগ হলে এখানেও স্বয়ংক্রিয়ভাবে চলে আসবে।
+let HT_TASK_CACHE = {};
+
+function htCloseReport(){
+  document.getElementById('htReportOverlay').classList.add('hide');
+}
+
+function htShowReport(cacheKey){
+  const item = HT_TASK_CACHE[cacheKey];
+  if(!item) return;
+  document.getElementById('ht-report-title').textContent = item.icon+' '+item.catLabel+' — ব্লক '+item.blk+' ('+bnDigits(item.students.length)+' জন)';
+  const {buckets} = rpFdGroup(item.students, item.markData, item.metaObj);
+  let html = '';
+  Object.values(buckets).forEach(b=>{
+    html += `<div style="margin-bottom:12px;">
+      <div style="font-size:12px;font-weight:700;color:#24313b;margin-bottom:6px;">${b.ico} ${b.label} (${bnDigits(b.students.length)} জন)</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">${b.students.map(s=>`
+        <span style="cursor:pointer;background:#faf8f2;border:1px solid #e2dbc7;border-radius:8px;padding:5px 9px;font-size:11px;color:#24313b;" onclick="htCloseReport();showStudentProfile(${s.serial},'dashboard')">${s.name}</span>`).join('')}
+      </div>
+    </div>`;
+  });
+  if(!html) html = '<div style="text-align:center;color:#8b98a3;font-size:12px;padding:10px 0;">কোনো তথ্য পাওয়া যায়নি</div>';
+  document.getElementById('ht-report-list').innerHTML = html;
+  document.getElementById('htReportOverlay').classList.remove('hide');
+}
+
+function htShowSportsReport(blk, done){
+  document.getElementById('ht-report-title').textContent = '⛹️ খেলাধুলা — ব্লক '+blk;
+  document.getElementById('ht-report-list').innerHTML = `<div style="text-align:center;color:#5c6f7a;font-size:12px;padding:10px 0;">
+    ${done ? '✅ আজকের খেলাধুলার তদারকি সম্পন্ন হয়েছে বলে চিহ্নিত করা হয়েছে।' : '⬜ আজকের খেলাধুলার তদারকি এখনো সম্পন্ন হিসেবে চিহ্নিত করা হয়নি।'}
+  </div>`;
+  document.getElementById('htReportOverlay').classList.remove('hide');
+}
+
+async function htRenderStaffWidget(){
+  const bodyEl = document.getElementById('staffSectionBody');
+  if(!bodyEl) return;
+  if(allStudents.length===0) assignRooms();
+  const cycle = hostelCycleKeys();
+
+  const onLeave = new Set();
+  if(typeof lvRecords!=='undefined' && typeof lvIsActiveToday==='function'){
+    allStudents.forEach(s=>{ if(lvRecords.some(r=>r.stuSerial===s.serial && lvIsActiveToday(r))) onLeave.add(s.serial); });
+  }
+
+  const dueCats = RP_FD_CATEGORIES.filter(c=> hostelCycleElapsed(c.startHour, c.startMin) <= cycle.elapsedNow);
+  const sportsDue = hostelCycleElapsed(16,0) <= cycle.elapsedNow;
+
+  const fetchKeys = [...new Set(dueCats.map(c=>c.path+'|'+hostelCycleKeyFor(c.startHour,c.startMin,cycle)))];
+  const fetched = {};
+  await Promise.all(fetchKeys.map(async pk=>{
+    const sep = pk.indexOf('|');
+    const p = pk.slice(0,sep), dk = pk.slice(sep+1);
+    fetched[pk] = await ncFetchDate(p, dk);
+  }));
+
+  let sportsData = {};
+  if(sportsDue){
+    const dateStr = cycle.endDate.toDateString();
+    await Promise.all(['A','B','C','D'].map(async blk=>{
+      const v = await fbGetOnce('sportsMarks/'+blk+'_'+dateStr);
+      sportsData[blk] = !!(v && v.checked);
+    }));
+  }
+
+  HT_TASK_CACHE = {};
+  const tutors = (typeof USERS!=='undefined' ? USERS.asst : []);
+
+  const cardsHtml = tutors.map(u=>{
+    const blk = ASST_BLOCK_MAP[u.id];
+    const done = [], pending = [];
+
+    dueCats.forEach(cat=>{
+      const dateKey = hostelCycleKeyFor(cat.startHour, cat.startMin, cycle);
+      const raw = fetched[cat.path+'|'+dateKey] || {};
+      let markData;
+      if(cat.prayer) markData = raw[cat.prayer] || {};
+      else if(cat.dataAdapter) markData = cat.dataAdapter(raw) || {};
+      else markData = raw;
+      let students = allStudents.filter(s=>(s.block||s.blk)===blk && !onLeave.has(s.serial));
+      if(cat.studentsFilter) students = students.filter(cat.studentsFilter);
+      if(students.length===0) return; // এই ব্লকে এই মুহূর্তে এই কাজের জন্য প্রযোজ্য কোনো ছাত্র নেই
+
+      const metaObj = cat.meta();
+      const {buckets, unmarked} = rpFdGroup(students, markData, metaObj);
+      const cacheKey = blk+'_'+cat.id;
+      HT_TASK_CACHE[cacheKey] = {blk, catLabel:cat.label, icon:cat.icon, students, markData, metaObj};
+
+      if(unmarked.length===0) done.push({label:cat.label, icon:cat.icon, cacheKey});
+      else pending.push({label:cat.label, icon:cat.icon, doneCount: students.length-unmarked.length, total: students.length});
+    });
+
+    if(sportsDue){
+      if(sportsData[blk]) done.push({label:'খেলাধুলা', icon:'⛹️', cacheKey:null, sports:true, blk});
+      else pending.push({label:'খেলাধুলা', icon:'⛹️', doneCount:0, total:1});
+    }
+
+    const totalTasks = done.length+pending.length;
+    return `
+      <div class="staff-item" style="flex-direction:column;align-items:stretch;gap:8px;">
+        <div style="display:flex;align-items:center;gap:10px;width:100%;">
+          <div class="staff-avatar" style="background:#faf8f2;border:1px solid #e2dbc7">🏠</div>
+          <div class="staff-info">
+            <div class="staff-name">${u.name}</div>
+            <div class="staff-duty">ব্লক ${blk}${BLOCKS[blk]?(' — '+BLOCKS[blk].floor):''}</div>
+          </div>
+          <div class="staff-status ${pending.length===0 && totalTasks>0 ? 'ss-active' : (done.length===0 ? 'ss-off' : 'ss-pending')}">${bnDigits(done.length)}/${bnDigits(totalTasks)} সম্পন্ন</div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          ${done.map(d=>`<span onclick="${d.sports?`htShowSportsReport('${d.blk}',true)`:`htShowReport('${d.cacheKey}')`}" style="cursor:pointer;background:#eaf7ee;border:1px solid #bfe6c9;color:#2f9e5c;border-radius:8px;padding:5px 9px;font-size:11px;font-weight:600;">✅ ${d.icon} ${d.label}</span>`).join('')}
+          ${pending.map(p=>`<span style="background:#faf8f2;border:1px solid #e2dbc7;color:#8b6a1f;border-radius:8px;padding:5px 9px;font-size:11px;font-weight:600;">⭕ ${p.icon} ${p.label} (${bnDigits(p.doneCount)}/${bnDigits(p.total)})</span>`).join('')}
+          ${totalTasks===0 ? '<span style="font-size:11px;color:#8b98a3;">আজকের কোনো রুটিনের সময় এখনো শুরু হয়নি</span>' : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  bodyEl.innerHTML = `<div class="staff-card">${cardsHtml}</div>`;
 }
 </script>
 </body>
