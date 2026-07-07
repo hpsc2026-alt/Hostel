@@ -990,6 +990,12 @@ function fbGetRange(path, startKey, endKey){
     .catch(e=>{ console.error('fbGetRange ব্যর্থ:', path, e); return {}; });
 }
 
+// path-এর একটি নির্দিষ্ট কী একবার পড়া (রেঞ্জ নয়, একটিমাত্র এন্ট্রি — যেমন খেলাধুলার ব্লক-ভিত্তিক টিক)
+function fbGetOnce(path){
+  if(!fbReady) return Promise.resolve(null);
+  return fbDb.ref(path).once('value').then(snap=>snap.val()).catch(e=>{ console.error('fbGetOnce ব্যর্থ:', path, e); return null; });
+}
+
 function fbDateKey(d){ const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
 function fbMonthRangeKeys(d=new Date()){
   const y=d.getFullYear(), m=d.getMonth(), p=n=>String(n).padStart(2,'0');
@@ -999,6 +1005,41 @@ function fbMonthRangeKeys(d=new Date()){
 function fbYearRangeKeys(d=new Date()){
   const y=d.getFullYear();
   return { start:y+'-01-01', end:y+'-12-31' };
+}
+
+// ══ হোস্টেলের "দিন" চক্র — মাগরিব থেকে পরের দিন মাগরিব পর্যন্ত ══
+// "আজকের প্রতিবেদন" ও "আজকের অসম্পূর্ণ কাজ" — এই দুইটি রিপোর্ট সাধারণ ক্যালেন্ডার দিন (রাত ১২টা-রাত ১২টা)
+// অনুযায়ী নয়, বরং মাগরিব নামাজ থেকে শুরু করে পরের দিন মাগরিব পর্যন্ত সময়কে "একদিন" ধরে হিসাব করে।
+// এভাবে সন্ধ্যার রুটিন (মাগরিব, সন্ধ্যার পড়া, এশা, রাতের পড়া, রাতের হাজিরা) এবং তার পরের সকাল-দুপুর-বিকেলের
+// পুরো রুটিন একসাথে "একদিনের" প্রতিবেদন হিসেবে দেখানো যায়।
+const HOSTEL_CYCLE_BOUNDARY_MIN = 18*60; // মাগরিবের কাটঅফ সময় (সন্ধ্যা ৬:০০)
+
+// একটি নির্দিষ্ট সময় (ঘণ্টা:মিনিট) মাগরিব থেকে কত মিনিট পরে পড়ে, তা হিসাব করে (চক্রের মধ্যে অবস্থান বোঝাতে)
+function hostelCycleElapsed(hour, min){
+  return ((hour*60+(min||0)) - HOSTEL_CYCLE_BOUNDARY_MIN + 1440) % 1440;
+}
+
+// বর্তমান হোস্টেল-দিন চক্রের শুরু (গতকাল/আজকের মাগরিব) ও শেষ (আজ/আগামীকালের মাগরিব) তারিখ-কী বের করে
+function hostelCycleKeys(){
+  const now = new Date();
+  const endDate = new Date(now);
+  if(now.getHours()*60+now.getMinutes() >= HOSTEL_CYCLE_BOUNDARY_MIN) endDate.setDate(endDate.getDate()+1);
+  const startDate = new Date(endDate);
+  startDate.setDate(startDate.getDate()-1);
+  return {
+    startKey: fbDateKey(startDate),
+    endKey: fbDateKey(endDate),
+    startDate, endDate,
+    elapsedNow: hostelCycleElapsed(now.getHours(), now.getMinutes()),
+  };
+}
+
+// একটি রুটিন ক্যাটাগরির (startHour/startMin সহ) জন্য কোন তারিখ-কী ব্যবহার হবে তা ঠিক করে —
+// মাগরিব ও তার পরের রুটিনগুলো (>=১৮:০০) চক্রের শুরুর দিনে (গতকাল সন্ধ্যা) রেকর্ড হয়,
+// আর ফজর থেকে আসর পর্যন্ত রুটিনগুলো (<১৮:০০) চক্রের শেষের দিনে (আজ) রেকর্ড হয়।
+function hostelCycleKeyFor(hour, min, cycle){
+  const catMin = hour*60+(min||0);
+  return catMin >= HOSTEL_CYCLE_BOUNDARY_MIN ? cycle.startKey : cycle.endKey;
 }
 
 // ── ইউজার-নির্ধারিত পাসওয়ার্ড (কেউ নিজের পাসওয়ার্ড বদলালে এখানে জমা থাকে, প্রাথমিক পাসওয়ার্ডকে override করে) ──
@@ -1264,21 +1305,22 @@ function effectiveUsers(role){
     <div class="nav-icon">✅</div>
     <div class="nav-label">চেকলিস্ট</div>
   </div>
-  <div class="nav-item">
+  <div class="nav-item" onclick="goBehaviour()">
     <div class="nav-icon">⚖️</div>
     <div class="nav-label">আচরণ</div>
   </div>
-  <div class="nav-item">
+  <div class="nav-item" onclick="goReport()">
     <div class="nav-icon">📊</div>
     <div class="nav-label">রিপোর্ট</div>
   </div>
 </div>
 
-<!-- ফজর সালাত স্ট্যাটাস অপশন শীট (অব্যবহৃত রাখা হয়েছে, প্রয়োজনে সরানো যাবে) -->
+<!-- দেরি/কাজা/যথাসময়ে সংখ্যায় ক্লিক করলে নাম-তালিকা দেখানোর শীট -->
 <div class="ns-overlay hide" id="nsOptionsOverlay" onclick="if(event.target===this) nsCloseOptions()">
   <div class="ns-sheet">
     <div class="ns-handle"></div>
     <div class="ns-title" id="nsOptTitle">ফজর সালাত হাজিরা</div>
+    <div id="nsOptList" style="margin-bottom:12px;"></div>
     <button class="ns-close-btn" onclick="nsCloseOptions()">বন্ধ করুন</button>
   </div>
 </div>
@@ -1295,9 +1337,9 @@ function effectiveUsers(role){
   <div class="ns-hero">
     <div style="font-size:13px;font-weight:700;color:#24313b;">📋 আজকের রিপোর্ট</div>
     <div class="ns-stat-row">
-      <div class="ns-stat"><div class="ns-stat-num" style="color:#2f9e5c" id="ns-stat-ontime">০</div><div class="ns-stat-lbl">যথাসময়ে</div></div>
-      <div class="ns-stat"><div class="ns-stat-num" style="color:#a9822f" id="ns-stat-late">০</div><div class="ns-stat-lbl">দেরিতে</div></div>
-      <div class="ns-stat"><div class="ns-stat-num" style="color:#c94545" id="ns-stat-qaza">০</div><div class="ns-stat-lbl">কাজা</div></div>
+      <div class="ns-stat" style="cursor:pointer" onclick="nsShowFilteredList('ontime')"><div class="ns-stat-num" style="color:#2f9e5c" id="ns-stat-ontime">০</div><div class="ns-stat-lbl">যথাসময়ে</div></div>
+      <div class="ns-stat" style="cursor:pointer" onclick="nsShowFilteredList('late')"><div class="ns-stat-num" style="color:#a9822f" id="ns-stat-late">০</div><div class="ns-stat-lbl">দেরিতে</div></div>
+      <div class="ns-stat" style="cursor:pointer" onclick="nsShowFilteredList('qaza')"><div class="ns-stat-num" style="color:#c94545" id="ns-stat-qaza">০</div><div class="ns-stat-lbl">কাজা</div></div>
     </div>
   </div>
 
@@ -1351,9 +1393,9 @@ function effectiveUsers(role){
 <script>
 // ── ফজর সালাত হাজিরা সিস্টেম ──
 const NAMAZ_STATUS = {
-  ontime: {label:'যথাসময়ে উপস্থিত', ico:'✅', cls:'ns-badge-ontime'},
-  late:   {label:'যথাসময়ে নামাজে আসেনি', ico:'⏰', cls:'ns-badge-late'},
-  qaza:   {label:'নামাজ কাজা হয়েছে', ico:'❌', cls:'ns-badge-qaza'},
+  ontime: {label:'যথাসময়ে উপস্থিত', ico:'✅', cls:'ns-badge-ontime', ptype:'plus'},
+  late:   {label:'যথাসময়ে নামাজে আসেনি', ico:'⏰', cls:'ns-badge-late', ptype:'minus'},
+  qaza:   {label:'নামাজ কাজা হয়েছে', ico:'❌', cls:'ns-badge-qaza', ptype:'minus'},
 };
 const ASST_BLOCK_MAP = {asst01:'A', asst02:'B', asst03:'C', asst04:'D'};
 
@@ -1366,6 +1408,32 @@ function getMyRestrictedBlock(){
 }
 
 let namazMarks = {};      // { 'ফজর': { studentSerial: 'ontime'|'late'|'qaza' } }
+let nsHistory = {};       // { serial: { 'ফজর':{lateDates:[],qazaDates:[]}, 'আসর':{...}, 'মাগরিব':{...} } }
+let nsHistorySeeded = false;
+function nsSeedHistory(){
+  if(nsHistorySeeded) return;
+  nsHistorySeeded = true;
+  if(allStudents.length===0) assignRooms();
+  const prayers = ['ফজর','আসর','মাগরিব'];
+  allStudents.forEach(s=>{
+    nsHistory[s.serial] = {};
+    prayers.forEach((pr,pi)=>{
+      // প্রতিটি ছাত্র ও ওয়াক্তের জন্য নির্দিষ্ট (deterministic) কিছু অতীত রেকর্ড — ডেমো উদ্দেশ্যে
+      const lateCount = (s.serial*(3+pi*2))%5;
+      const qazaCount = (s.serial*(2+pi))%3;
+      const lateDates=[], qazaDates=[];
+      for(let i=1;i<=lateCount;i++){
+        const d=new Date(); d.setDate(d.getDate()-((s.serial+i*4+pi)%28+1));
+        lateDates.push(formatBnDate(d));
+      }
+      for(let i=1;i<=qazaCount;i++){
+        const d=new Date(); d.setDate(d.getDate()-((s.serial+i*6+pi)%28+1));
+        qazaDates.push(formatBnDate(d));
+      }
+      nsHistory[s.serial][pr] = {lateDates, qazaDates};
+    });
+  });
+}
 let nsCurrentPrayer = 'ফজর';
 let nsCurrentStatus = null;
 
@@ -1417,15 +1485,30 @@ function nsOpenStudentList(){
 
 function nsToggle(serial, status){
   if(!namazMarks[nsCurrentPrayer]) namazMarks[nsCurrentPrayer] = {};
-  const current = namazMarks[nsCurrentPrayer][serial];
-  const turningOn = current !== status;
-  namazMarks[nsCurrentPrayer][serial] = turningOn ? status : undefined;
+  const prevStatus = namazMarks[nsCurrentPrayer][serial];
+  const turningOn = prevStatus !== status;
+  const newStatus = turningOn ? status : undefined;
+  namazMarks[nsCurrentPrayer][serial] = newStatus;
   nsRenderList();
 
   const user = getSessionUser();
   const dateKey = fbTodayKey();
-  fbSet('namaz/'+dateKey+'/'+nsCurrentPrayer+'/'+serial, namazMarks[nsCurrentPrayer][serial] || null);
+  fbSet('namaz/'+dateKey+'/'+nsCurrentPrayer+'/'+serial, newStatus || null);
   fbSet('namazMeta/'+dateKey+'/'+nsCurrentPrayer+'/'+serial, turningOn ? {by:user.name, at:Date.now()} : null);
+
+  // দেরি/কাজা ইতিহাসে আজকের তারিখ যোগ/বাদ (প্রোফাইল পেজে দেখানোর জন্য)
+  if(typeof nsSeedHistory==='function') nsSeedHistory();
+  if(!nsHistory[serial]) nsHistory[serial] = {};
+  if(!nsHistory[serial][nsCurrentPrayer]) nsHistory[serial][nsCurrentPrayer] = {lateDates:[], qazaDates:[]};
+  const hist = nsHistory[serial][nsCurrentPrayer];
+  const today = todayBnDate();
+  const removeToday = arr=>{ const idx=arr.indexOf(today); if(idx>=0) arr.splice(idx,1); };
+  if(prevStatus==='late') removeToday(hist.lateDates);
+  if(prevStatus==='qaza') removeToday(hist.qazaDates);
+  if(newStatus==='late' && !hist.lateDates.includes(today)) hist.lateDates.push(today);
+  if(newStatus==='qaza' && !hist.qazaDates.includes(today)) hist.qazaDates.push(today);
+  fbSet('namazHistory/'+serial+'/'+nsCurrentPrayer+'/late/'+dateKey, newStatus==='late' ? true : null);
+  fbSet('namazHistory/'+serial+'/'+nsCurrentPrayer+'/qaza/'+dateKey, newStatus==='qaza' ? true : null);
 
   const {students} = nsGetBlockStudents();
   const stu = students.find(s=>s.serial===serial) || allStudents.find(s=>s.serial===serial);
@@ -1483,6 +1566,27 @@ function nsRenderList(){
     });
   }
   document.getElementById('ns-list').innerHTML = html;
+}
+
+function nsShowFilteredList(status){
+  const {students} = nsGetBlockStudents();
+  const marks = namazMarks[nsCurrentPrayer] || {};
+  const names = students.filter(s=>marks[s.serial]===status);
+
+  const titles = {ontime:'যথাসময়ে এসেছে', late:'দেরিতে এসেছে', qaza:'কাজা হয়েছে'};
+  document.getElementById('nsOptTitle').textContent = nsCurrentPrayer+' সালাত — '+titles[status]+' ('+names.length+' জন)';
+
+  const listEl = document.getElementById('nsOptList');
+  if(names.length===0){
+    listEl.innerHTML = '<div style="text-align:center;color:#5c6f7a;font-size:13px;padding:10px 0;">কোনো ছাত্র নেই</div>';
+  } else {
+    listEl.innerHTML = names.map(s=>`
+      <div class="ns-opt-btn" style="cursor:pointer" onclick="nsCloseOptions(); showStudentProfile(${s.serial},'namaz')">
+        <span class="ns-opt-txt">${s.name}</span>
+        <span style="font-size:11px;color:#5c6f7a;">${CLASS_BN[s.cls]||s.cls} • ব্লক ${s.block||s.blk} • রুম ${s.room}</span>
+      </div>`).join('');
+  }
+  document.getElementById('nsOptionsOverlay').classList.remove('hide');
 }
 
 function nsShowReport(){
@@ -3557,9 +3661,9 @@ function nrShowReport(){
 // ── রাতের হাজিরা (ঘুম পরিদর্শন) — দৈনন্দিন রুটিনের একদম শেষ কাজ ──
 // হাউজ টিউটর ঘুমানোর সময় শেষবার প্রতিটি ছাত্রকে যে অবস্থায় পেয়েছেন, তার একটিমাত্র (single-select) রেকর্ড
 const NFC_META = {
-  sleep: {label:'ঘুমে',    ico:'😴', color:'#2b7fd6'},
-  study: {label:'পড়ছে',   ico:'📖', color:'#2f9e5c'},
-  other: {label:'অন্যান্য', ico:'❓', color:'#a9822f'},
+  sleep: {label:'ঘুমে',    ico:'😴', color:'#2b7fd6', ptype:'none'},
+  study: {label:'পড়ছে',   ico:'📖', color:'#2f9e5c', ptype:'none'},
+  other: {label:'অন্যান্য', ico:'❓', color:'#a9822f', ptype:'none'},
 };
 let nfcMarks = {}; // { serial: 'sleep'|'study'|'other' }
 let nfcUnsubscribe = null;
@@ -3869,6 +3973,12 @@ function sfShowReport(){
 
 <script>
 // ── অসুস্থতা ও ক্লাস ফাঁকি সিস্টেম (চেকবক্স ভিত্তিক, সব ছাত্র একসাথে) ──
+// ── "আজকের প্রতিবেদন" ও "আজকের অসম্পূর্ণ কাজ"-এ পুনর্ব্যবহারের জন্য META কনফিগ ──
+// (শুধু 'skip' = ক্লাস ফাঁকিকেই নেগেটিভ/ত্রুটি হিসেবে গণ্য করা হয়, অসুস্থতা নিজে কোনো ত্রুটি নয়)
+const SC_META = {
+  sick: {label:'অসুস্থ',       ico:'🏥', ptype:'none'},
+  skip: {label:'ক্লাস ফাঁকি', ico:'🚫', ptype:'minus'},
+};
 let scMarks = {};          // { serial: {sick:true/false, skip:true/false} } — আজকের মার্কিং
 let scNotes = {};          // { serial: 'নোট টেক্সট' } — অসুস্থতার নোট (আজকের)
 let scSickLink = {};       // { serial: hlRecord.id } — আজকে এই মডিউল থেকে তৈরি স্বাস্থ্য রেকর্ডের লিংক
@@ -4169,7 +4279,7 @@ function scShowReport(){
 <div class="bottom-nav">
   <div class="nav-item" onclick="goDashboard()"><div class="nav-icon">🏠</div><div class="nav-label">হোম</div></div>
   <div class="nav-item active" onclick="goStudents()"><div class="nav-icon">👨‍🎓</div><div class="nav-label" style="color:#a9822f">ছাত্র</div></div>
-  <div class="nav-item"><div class="nav-icon">✅</div><div class="nav-label">চেকলিস্ট</div></div>
+  <div class="nav-item" onclick="goChecklist()"><div class="nav-icon">✅</div><div class="nav-label">চেকলিস্ট</div></div>
   <div class="nav-item" onclick="goBehaviour()"><div class="nav-icon">⚖️</div><div class="nav-label">আচরণ</div></div>
   <div class="nav-item" onclick="goAttendance()"><div class="nav-icon">🌙</div><div class="nav-label">হাজিরা</div></div>
 </div>
@@ -4365,6 +4475,7 @@ const ROLE_CONFIG = {
     ],
     quickActions: [
       {icon:'📊', label:'সম্পূর্ণ রিপোর্ট', onclick:'goReport()'},
+      {icon:'🕐', label:'আজকের রুটিন প্রতিবেদন', onclick:'goRoutineFullReport()'},
       {icon:'👨‍💼', label:'স্টাফ ব্যবস্থাপনা', onclick:'goStaffKpi()'},
       {icon:'🚨', label:'অভিযোগ কেন্দ্র', onclick:'goComplaintCenter()'},
       {icon:'🔍', label:'পরিদর্শন প্রতিবেদন', onclick:'obOpen()'},
@@ -4384,6 +4495,7 @@ const ROLE_CONFIG = {
       {icon:'🏠', label:'বাড়িতে আছে', val:'০', badge:'আগে ফিরলে ট্যাপ করুন', cls:'sc-amber', nav:'goEarlyReturn', id:'stat-home-count'},
     ],
     quickActions: [
+      {icon:'🕐', label:'আজকের রুটিন প্রতিবেদন', onclick:'goRoutineFullReport()'},
       {icon:'🚨', label:'অভিযোগ কেন্দ্র', onclick:'goComplaintCenter()'},
       {icon:'🔍', label:'পরিদর্শন প্রতিবেদন', onclick:'obOpen()'},
       {icon:'🏆', label:'সহকারী র‍্যাংকিং', onclick:'goStaffRanking()'},
@@ -4708,8 +4820,12 @@ function renderDashboard(){
   }
 
   const complaintCountEl = document.getElementById('stat-complaint-count');
-  if(complaintCountEl && typeof bhRecords!=='undefined'){
-    const todayComplaints = bhRecords.filter(r=>r.type==='minus' && (r.time==='এইমাত্র' || (r.time||'').includes('আজ'))).length;
+  if(complaintCountEl && typeof ogGetComplaints==='function'){
+    const dayStart = new Date(); dayStart.setHours(0,0,0,0);
+    const todayComplaints = ogGetComplaints().filter(i=>{
+      const isToday = i.r.ts ? i.r.ts >= dayStart.getTime() : (i.r.time==='এইমাত্র' || (i.r.time||'').includes('আজ'));
+      return isToday && !i.a.resolved;
+    }).length;
     complaintCountEl.textContent = bnStat(todayComplaints);
   }
 
@@ -5052,6 +5168,7 @@ function assignRooms(){
 
 assignRooms();
 if(typeof bhLoadHistoryFromFirebase==="function") bhLoadHistoryFromFirebase();
+if(typeof hlLoadHistoryFromFirebase==="function") hlLoadHistoryFromFirebase();
 if(typeof srLoadTimelyFromFirebase==="function") srLoadTimelyFromFirebase();
 if(typeof ogLoadFromFirebase==="function") ogLoadFromFirebase();
 
@@ -6249,6 +6366,25 @@ let hlRecords=[
   {id:2,stuName:"MD.ADOL",cls:"IX",blk:"C",illness:"সর্দি-কাশি",medicine:"অ্যান্টিহিস্টামিন",dosage:"রাতে ১ বার",status:"recovering",note:"ভালো হচ্ছে।",time:"গতকাল",by:"শরিফুল ইসলাম স্যার"},
 ];
 let hlFilterVal="all", hlNextId=3;
+let hlFbLoaded=false;
+
+// পূর্বে Firebase-এ সংরক্ষিত স্বাস্থ্য রেকর্ড লোড করা (আগে এই সিঙ্ক না থাকায়
+// একজনের "সুস্থ হয়েছে" চিহ্নিতকরণ অন্য ডিভাইস/সেশনে প্রতিফলিত হতো না —
+// ড্যাশবোর্ড সবসময় শুরুর ডেমো ডেটা থেকে গণনা করত)
+function hlLoadHistoryFromFirebase(){
+  if(hlFbLoaded) return; hlFbLoaded=true;
+  fbListen('healthRecords', data=>{
+    const fbList = Object.entries(data||{}).map(([key,val])=>({...val, fbKey:key, id:val.id||key}));
+    const fbIds = new Set(fbList.map(r=>String(r.id)));
+    const localOnly = hlRecords.filter(r=>!r.fbKey && !fbIds.has(String(r.id)));
+    const merged = [...fbList, ...localOnly];
+    merged.sort((a,b)=>(b.ts||0)-(a.ts||0));
+    hlRecords = merged;
+    hlNextId = Math.max(hlNextId, ...merged.map(r=>typeof r.id==="number"?r.id:0), 0)+1;
+    if(document.getElementById('page-health')?.classList.contains('active') && typeof hlRender==='function') hlRender();
+    if(document.getElementById('page-dashboard')?.classList.contains('active') && typeof renderDashboard==='function') renderDashboard();
+  });
+}
 
 function goHealth(){ hlPopulateStudents(); hlInit(); showPage("health"); }
 function goLeave(){ lvPopulateStudents(); lvInit(); showPage("leave"); }
@@ -7157,6 +7293,48 @@ function showStaffProfile(staffId, fromPage){
     </div>
   </div>
 
+  <!-- নামাজের ইতিহাস (দেরি ও কাজা) -->
+  <div class="section-hd">🕌 নামাজের ইতিহাস (দেরি ও কাজা)</div>
+  <div class="stup-bh-card">
+    <div class="stup-bh-hd">
+      <div class="stup-bh-title">সামগ্রিক পরিসংখ্যান</div>
+    </div>
+    <div style="padding:12px 16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e2dbc720;">
+        <span style="font-size:12px;color:#34444f;">⏰ ফজর নামাজে দেরি</span>
+        <span id="stup-ns-fajr-late-count" style="font-size:13px;font-weight:700;color:#a9822f;">০ দিন</span>
+      </div>
+      <div id="stup-ns-fajr-late-dates" style="font-size:10px;color:#8b98a3;padding:4px 0 8px;line-height:1.6;"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e2dbc720;">
+        <span style="font-size:12px;color:#34444f;">❌ ফজর নামাজ কাজা</span>
+        <span id="stup-ns-fajr-qaza-count" style="font-size:13px;font-weight:700;color:#c94545;">০ দিন</span>
+      </div>
+      <div id="stup-ns-fajr-qaza-dates" style="font-size:10px;color:#8b98a3;padding:4px 0 8px;line-height:1.6;"></div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e2dbc720;">
+        <span style="font-size:12px;color:#34444f;">⏰ আসর নামাজে দেরি</span>
+        <span id="stup-ns-asr-late-count" style="font-size:13px;font-weight:700;color:#a9822f;">০ দিন</span>
+      </div>
+      <div id="stup-ns-asr-late-dates" style="font-size:10px;color:#8b98a3;padding:4px 0 8px;line-height:1.6;"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e2dbc720;">
+        <span style="font-size:12px;color:#34444f;">❌ আসর নামাজ কাজা</span>
+        <span id="stup-ns-asr-qaza-count" style="font-size:13px;font-weight:700;color:#c94545;">০ দিন</span>
+      </div>
+      <div id="stup-ns-asr-qaza-dates" style="font-size:10px;color:#8b98a3;padding:4px 0 8px;line-height:1.6;"></div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e2dbc720;">
+        <span style="font-size:12px;color:#34444f;">⏰ মাগরিব নামাজে দেরি</span>
+        <span id="stup-ns-maghrib-late-count" style="font-size:13px;font-weight:700;color:#a9822f;">০ দিন</span>
+      </div>
+      <div id="stup-ns-maghrib-late-dates" style="font-size:10px;color:#8b98a3;padding:4px 0 8px;line-height:1.6;"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e2dbc720;">
+        <span style="font-size:12px;color:#34444f;">❌ মাগরিব নামাজ কাজা</span>
+        <span id="stup-ns-maghrib-qaza-count" style="font-size:13px;font-weight:700;color:#c94545;">০ দিন</span>
+      </div>
+      <div id="stup-ns-maghrib-qaza-dates" style="font-size:10px;color:#8b98a3;padding:4px 0 0;line-height:1.6;"></div>
+    </div>
+  </div>
+
   <!-- অসুস্থতার ইতিহাস -->
   <div class="section-hd">🏥 অসুস্থতার ইতিহাস</div>
   <div class="stup-bh-card">
@@ -7418,6 +7596,22 @@ function showStudentProfile(serial, fromPage){
   if(ccNsCntEl) ccNsCntEl.textContent = bnST(ccH.notStudyDates.length)+" দিন";
   if(ccNsDatesEl) ccNsDatesEl.textContent = ccH.notStudyDates.length ? ('তারিখ: '+ccH.notStudyDates.join(', ')) : 'কোনো রেকর্ড নেই ✅';
 
+  // নামাজের ইতিহাস (দেরি ও কাজা)
+  if(typeof nsSeedHistory==='function') nsSeedHistory();
+  const nsH = (typeof nsHistory!=='undefined' && nsHistory[s.serial]) ? nsHistory[s.serial] : {};
+  const nsPrayerIds = {'ফজর':'fajr','আসর':'asr','মাগরিব':'maghrib'};
+  Object.entries(nsPrayerIds).forEach(([prName,prId])=>{
+    const prH = nsH[prName] || {lateDates:[], qazaDates:[]};
+    const lateCntEl=document.getElementById('stup-ns-'+prId+'-late-count');
+    const lateDatesEl=document.getElementById('stup-ns-'+prId+'-late-dates');
+    const qazaCntEl=document.getElementById('stup-ns-'+prId+'-qaza-count');
+    const qazaDatesEl=document.getElementById('stup-ns-'+prId+'-qaza-dates');
+    if(lateCntEl) lateCntEl.textContent = bnST(prH.lateDates.length)+" দিন";
+    if(lateDatesEl) lateDatesEl.textContent = prH.lateDates.length ? ('তারিখ: '+prH.lateDates.join(', ')) : 'কোনো রেকর্ড নেই ✅';
+    if(qazaCntEl) qazaCntEl.textContent = bnST(prH.qazaDates.length)+" দিন";
+    if(qazaDatesEl) qazaDatesEl.textContent = prH.qazaDates.length ? ('তারিখ: '+prH.qazaDates.join(', ')) : 'কোনো রেকর্ড নেই ✅';
+  });
+
   // অসুস্থতার ইতিহাস (স্বাস্থ্য রেকর্ড থেকে)
   const hlRec=(typeof hlRecords!=="undefined")?hlRecords.filter(r=>r.stuName===s.name.toUpperCase()||r.stuName===s.name):[];
   const sickEl=document.getElementById("stup-sick-list");
@@ -7678,7 +7872,6 @@ function findAndShowStudent(name){
 <!-- ══ PAGE: STUDENT PROFILE ══ -->
 
 <script>
-const bnST=n=>String(n).replace(/\d/g,x=>"০১২৩৪৫৬৭৮৯"[x]);
 let stpFromPage="students";
 
 function stpEditRoom(serial){
@@ -8114,9 +8307,7 @@ function svToggleAlert(id){
 </div>
 
 <script>
-const bnSV=n=>String(n).replace(/\d/g,x=>"০১২৩৪৫৬৭৮৯"[x]);
-
-const SV_STAFF=[
+const SV_STAFF2=[
   {id:"asst01",name:"শাহাদাত স্যার",blk:"A",shift:"ফজর–দুপুর",color:"#2f9e5c",isOn:false,clDone:6,clTotal:6,badge:"svd-off",badgeTxt:"বিশ্রামে"},
   {id:"asst02",name:"আবুল হাসান স্যার",blk:"B",shift:"দুপুর–সন্ধ্যা",color:"#8258c9",isOn:true,clDone:3,clTotal:6,badge:"svd-on",badgeTxt:"ডিউটিতে"},
   {id:"asst03",name:"শরিফুল ইসলাম স্যার",blk:"C",shift:"সন্ধ্যা–রাত",color:"#1f9797",isOn:false,clDone:0,clTotal:4,badge:"svd-off",badgeTxt:"বিশ্রামে"},
@@ -8175,13 +8366,13 @@ function svRender(){
     :`<div style="padding:14px;text-align:center;color:#8b98a3;font-size:12px;">কোনো জরুরি অ্যালার্ট নেই ✅</div>`;
 
   // স্টাফ লিস্ট
-  const totalDone=SV_STAFF.reduce((s,x)=>s+x.clDone,0);
-  const totalTasks=SV_STAFF.reduce((s,x)=>s+x.clTotal,0);
+  const totalDone=SV_STAFF2.reduce((s,x)=>s+x.clDone,0);
+  const totalTasks=SV_STAFF2.reduce((s,x)=>s+x.clTotal,0);
   const overallPct=Math.round(totalDone/totalTasks*100);
   document.getElementById("sv-staff-overall").textContent="সামগ্রিক: "+bnSV(overallPct)+"%";
   document.getElementById("sv-cl-pct").textContent=bnSV(overallPct)+"%";
 
-  document.getElementById("sv-staff-list").innerHTML=SV_STAFF.map(s=>{
+  document.getElementById("sv-staff-list").innerHTML=SV_STAFF2.map(s=>{
     const pct=Math.round(s.clDone/s.clTotal*100);
     const barColor=pct>=80?"#2f9e5c":pct>=50?"#a9822f":"#c94545";
     return `<div class="sv-staff-row" onclick="showStaffProfile('${s.id}','supervisor')">
@@ -8375,8 +8566,6 @@ function svSetClean(idx,st){
 </div>
 
 <script>
-const bnSV=n=>String(n).replace(/\d/g,x=>"০১২৩৪৫৬৭৮৯"[x]);
-
 // পরিচ্ছন্নতা রেকর্ড
 let svCleanRecords=[
   {area:"ডাইনিং রুম",status:"ok",note:"সকালের পরে পরিষ্কার করা হয়েছে।",by:"পরিচ্ছন্নতা কর্মী ১",time:"সকাল ৯:০০"},
@@ -8394,7 +8583,7 @@ const SV_NAMAZ=[
 ];
 
 // স্টাফ KPI ডেটা
-const SV_STAFF=[
+const SV_STAFF3=[
   {id:"asst01",name:"শাহাদাত",block:"ব্লক A",ico:"🏠",color:"#2f9e5c",duty:"on",dutyTxt:"ডিউটি শেষ",clDone:6,clTotal:6,issues:0},
   {id:"asst02",name:"আবুল হাসান",block:"ব্লক B",ico:"🏠",color:"#8258c9",duty:"on",dutyTxt:"ডিউটিতে",clDone:4,clTotal:6,issues:1},
   {id:"asst03",name:"শরিফুল",block:"ব্লক C",ico:"🏠",color:"#1f9797",duty:"off",dutyTxt:"ডিউটি পরে",clDone:0,clTotal:4,issues:0},
@@ -8427,7 +8616,7 @@ function svRefresh(){ svRender(); svUpdateTime(); }
 
 function svRender(){
   // হাউজ টিউটর গ্রিড
-  document.getElementById("sv-staff-grid").innerHTML=SV_STAFF.map(s=>{
+  document.getElementById("sv-staff-grid").innerHTML=SV_STAFF3.map(s=>{
     const pct=Math.round(s.clDone/s.clTotal*100);
     const pctColor=pct>=80?"#2f9e5c":pct>=50?"#a9822f":"#c94545";
     const dutyCls=s.duty==="on"?"ss-duty-on":s.duty==="pend"?"ss-duty-pend":"ss-duty-off";
@@ -8477,7 +8666,7 @@ function svRender(){
   const alerts=[
     ...bhRecords.filter(r=>r.cat==="escape").map(r=>({type:"red",ico:"🚨",title:"পলায়নের ঘটনা",desc:r.stuName+" — "+r.desc})),
     ...svCleanRecords.filter(r=>r.status==="issue").map(r=>({type:"amber",ico:"🧹",title:"পরিচ্ছন্নতার সমস্যা",desc:r.area+" — "+r.note})),
-    ...(SV_STAFF.filter(s=>s.issues>0).map(s=>({type:"amber",ico:"⚠️",title:s.name+" স্যার — সমস্যা রিপোর্ট",desc:bnSV(s.issues)+"টি বিষয় জানানো হয়েছে"}))),
+    ...(SV_STAFF3.filter(s=>s.issues>0).map(s=>({type:"amber",ico:"⚠️",title:s.name+" স্যার — সমস্যা রিপোর্ট",desc:bnSV(s.issues)+"টি বিষয় জানানো হয়েছে"}))),
   ];
   document.getElementById("sv-alert-list").innerHTML=alerts.length?
     alerts.map(a=>`<div class="ss-alert-row ${a.type}">
@@ -9463,27 +9652,64 @@ async function rkRenderDashWidget(){
 const bnNC=n=>String(n).replace(/\d/g,x=>"০১২৩৪৫৬৭৮৯"[x]);
 
 // আজকের নির্দিষ্ট একটি ফায়ারবেস পাথ থেকে শুধু আজকের এন্ট্রি একবার পড়া
-async function ncFetchToday(path){
-  const today = fbTodayKey();
-  const range = await fbGetRange(path, today, today);
-  return (range && range[today]) || {};
+// একটি মার্কিং-ভ্যালু (স্ট্রিং / গ্রুপ-অবজেক্ট / চেকবক্স-অবজেক্ট) থেকে যেকোনো META কনফিগ ব্যবহার করে
+// স্বয়ংক্রিয়ভাবে নেতিবাচক (ptype:'minus') এন্ট্রিগুলো বের করে আনে। নতুন কোনো রিপোর্ট মডিউল যোগ হলে
+// এটি বাড়তি কোনো কোড ছাড়াই স্বয়ংক্রিয়ভাবে "আজকের অসম্পূর্ণ কাজ"-এ ধরা পড়বে, যতক্ষণ তার META-তে ptype থাকে।
+function ncMetaIssues(markValue, metaObj, prefix){
+  const issues = [];
+  if(markValue==null || !metaObj) return issues;
+  const pfx = prefix ? (prefix+' — ') : '';
+  if(typeof markValue === 'string'){
+    const m = metaObj[markValue];
+    if(m && m.ptype==='minus') issues.push(pfx+m.ico+' '+m.label);
+  } else if(typeof markValue === 'object'){
+    Object.entries(markValue).forEach(([k,v])=>{
+      if(v===true){
+        // চেকবক্স-স্টাইল: কী নিজেই META-এর কী (যেমন nrMarks)
+        const m = metaObj[k];
+        if(m && m.ptype==='minus') issues.push(pfx+m.ico+' '+m.label);
+      } else if(typeof v === 'string'){
+        // গ্রুপ-স্টাইল: ভ্যালুটি META-এর কী (যেমন ccMarks, zlMarks, acMarks)
+        const m = metaObj[v];
+        if(m && m.ptype==='minus') issues.push(pfx+m.ico+' '+m.label);
+      }
+    });
+  }
+  return issues;
 }
 
-// সব ক্যাটাগরি থেকে আজকের নেতিবাচক (অসম্পূর্ণ/ত্রুটিপূর্ণ) এন্ট্রি একত্র করে প্রতিটি ছাত্রের জন্য ইস্যু-লিস্ট বানানো
+// path-এর একটি নির্দিষ্ট তারিখ-কী থেকে ডেটা পড়া (একবার)
+async function ncFetchDate(path, dateKey){
+  const range = await fbGetRange(path, dateKey, dateKey);
+  return (range && range[dateKey]) || {};
+}
+// পুরনো কোড যেন ভেঙে না যায় তাই ব্যাকওয়ার্ড-কম্প্যাটিবল র‍্যাপার (আজকের ক্যালেন্ডার-কী দিয়ে)
+async function ncFetchToday(path){
+  return ncFetchDate(path, fbTodayKey());
+}
+
+// সব ক্যাটাগরি থেকে "আজকের হোস্টেল-দিন" (মাগরিব থেকে পরের দিন মাগরিব) চক্রের নেতিবাচক/ত্রুটিপূর্ণ এন্ট্রি
+// একত্র করে প্রতিটি ছাত্রের জন্য ইস্যু-লিস্ট বানানো
 async function ncBuildTodayIssues(){
   if(allStudents.length===0) assignRooms();
+  const cycle = hostelCycleKeys();
 
-  const [cc, uf, ns, zl, id, es, nr, ac] = await Promise.all([
-    ncFetchToday('cleanliness'),
-    ncFetchToday('uniform'),
-    ncFetchToday('namaz'),
-    ncFetchToday('zohrLunch'),
-    ncFetchToday('ishaDinner'),
-    ncFetchToday('eveningStudy'),
-    ncFetchToday('nightStudyRest'),
-    ncFetchToday('arabicClass'),
+  const [cc, uf, nsEnd, nsStart, zl, id, es, nr, ac, sc] = await Promise.all([
+    ncFetchDate('cleanliness',    cycle.endKey),   // সকাল ৭:০০
+    ncFetchDate('uniform',        cycle.endKey),   // সকাল ৮:০০
+    ncFetchDate('namaz',          cycle.endKey),   // ফজর, আসর — চক্রের শেষের দিনে রেকর্ড হয়
+    ncFetchDate('namaz',          cycle.startKey), // মাগরিব — চক্রের শুরুর দিনে (গতকাল সন্ধ্যা) রেকর্ড হয়
+    ncFetchDate('zohrLunch',      cycle.endKey),   // দুপুর ১:২০
+    ncFetchDate('ishaDinner',     cycle.startKey), // রাত ৮:০০
+    ncFetchDate('eveningStudy',   cycle.startKey), // সন্ধ্যা ৬:০০
+    ncFetchDate('nightStudyRest', cycle.startKey), // রাত ৯:০০
+    ncFetchDate('arabicClass',    cycle.endKey),   // সকাল ৭:০০
+    ncFetchDate('sickClassSkip',  cycle.endKey),   // সকাল ৮:৪০-৯:৩০
   ]);
-  const nsF = ns['ফজর'] || {};
+  const nsF = nsEnd['ফজর'] || {};
+  const nsA = nsEnd['আসর'] || {};
+  const nsM = nsStart['মাগরিব'] || {};
+  const scMarksData = sc.marks || {};
 
   // ছুটিতে থাকা ছাত্রদের এই হিসাব থেকে বাদ দেওয়া হয় (অন্যান্য মডিউলের মতোই)
   const onLeave = new Set();
@@ -9496,45 +9722,17 @@ async function ncBuildTodayIssues(){
     if(onLeave.has(s.serial)) return;
     const sid = s.serial;
     const issues = [];
-
-    const ccm = cc[sid];
-    if(ccm){
-      if(ccm.hygiene==='unclean') issues.push('🧺 পরিচ্ছন্ন ছিল না');
-      if(ccm.study==='not_studying') issues.push('📴 সকালে পড়ছিল না');
-    }
-
-    const ufm = uf[sid];
-    if(ufm==='no_uniform') issues.push('👔 ইউনিফর্ম ছাড়া ক্লাসে গেছে');
-    if(ufm==='absent_class') issues.push('🚫 ক্লাসে অনুপস্থিত');
-
-    const nsm = nsF[sid];
-    if(nsm==='late') issues.push('⏰ ফজর নামাজে যথাসময়ে আসেনি');
-    if(nsm==='qaza') issues.push('❌ ফজর নামাজ কাজা হয়েছে');
-
-    const zlm = zl[sid]; const zlPrayer = zlm && typeof zlm==='object' ? zlm.prayer : null;
-    if(zlPrayer==='no_jamaat') issues.push('🚶 জোহর জামাত পায়নি');
-    if(zlPrayer==='absent_zl') issues.push('❌ জোহর নামাজে অনুপস্থিত');
-
-    const idm = id[sid]; const idPrayer = idm && typeof idm==='object' ? idm.prayer : null;
-    if(idPrayer==='no_jamaat') issues.push('🚶 এশা জামাত পায়নি');
-    if(idPrayer==='absent_id') issues.push('❌ এশা নামাজে অনুপস্থিত');
-
-    const esm = es[sid];
-    if(esm==='improper') issues.push('🟡 সন্ধ্যায় ঠিকমতো পড়েনি');
-    if(esm==='none') issues.push('❌ সন্ধ্যায় মোটেই পড়েনি');
-
-    const nrm = nr[sid];
-    if(nrm){
-      if(nrm.notread) issues.push('📴 রাতে পড়েনি');
-      if(nrm.notslept) issues.push('🌙 রাতে যথাসময়ে ঘুমায়নি');
-    }
-
-    const acm = ac[sid];
-    if(acm){
-      if(acm.attendance==='absent') issues.push('❌ আরবি ক্লাসে অনুপস্থিত');
-      else if(acm.attendance==='partial') issues.push('🟡 আরবি ক্লাসে আংশিক উপস্থিত');
-      if(acm.lesson==='lesson_not_done') issues.push('📕 আরবি পড়া দেয়নি');
-    }
+    issues.push(...ncMetaIssues(cc[sid], CC_META));
+    issues.push(...ncMetaIssues(uf[sid], UF_OPTIONS));
+    issues.push(...ncMetaIssues(nsF[sid], NAMAZ_STATUS, 'ফজর'));
+    issues.push(...ncMetaIssues(nsA[sid], NAMAZ_STATUS, 'আসর'));
+    issues.push(...ncMetaIssues(nsM[sid], NAMAZ_STATUS, 'মাগরিব'));
+    issues.push(...ncMetaIssues(zl[sid], ZL_META));
+    issues.push(...ncMetaIssues(id[sid], ID_META));
+    issues.push(...ncMetaIssues(es[sid], ES_OPTIONS));
+    issues.push(...ncMetaIssues(nr[sid], NR_META));
+    issues.push(...ncMetaIssues(ac[sid], AC_OPTIONS));
+    issues.push(...ncMetaIssues(scMarksData[sid], SC_META));
 
     if(issues.length>0) result.push({...s, issues});
   });
@@ -9546,10 +9744,10 @@ async function ncBuildTodayIssues(){
 function goNonCompliance(){ ncRender(); showPage('noncompliance'); }
 
 async function ncRender(){
-  const d=new Date();
+  const cycle = hostelCycleKeys();
   const months=["জানুয়ারি","ফেব্রুয়ারি","মার্চ","এপ্রিল","মে","জুন","জুলাই","আগস্ট","সেপ্টেম্বর","অক্টোবর","নভেম্বর","ডিসেম্বর"];
-  const days=["রবিবার","সোমবার","মঙ্গলবার","বুধবার","বৃহস্পতিবার","শুক্রবার","শনিবার"];
-  document.getElementById('nc-date-sub').textContent = days[d.getDay()]+", "+bnNC(d.getDate())+" "+months[d.getMonth()];
+  const bnDate = d => bnNC(d.getDate())+" "+months[d.getMonth()];
+  document.getElementById('nc-date-sub').textContent = 'মাগরিব, '+bnDate(cycle.startDate)+' — মাগরিব, '+bnDate(cycle.endDate);
 
   const wrap = document.getElementById('nc-block-sections');
   wrap.innerHTML = '<div class="nc-empty">⏳ লোড হচ্ছে...</div>';
@@ -10010,8 +10208,6 @@ function skRenderOne(id){
 </div>
 
 <script>
-const bnSK=n=>String(n).replace(/\d/g,x=>"০১২৩৪৫৬৭৮৯"[x]);
-
 const SK_STAFF_DATA=[
   {
     id:"asst01",name:"শাহাদাত স্যার",block:"ব্লক A",color:"#2f9e5c",ico:"🏠",
@@ -10315,7 +10511,12 @@ function renderDashBlockCards(){
     : Object.entries(BR_BLOCKS);
   el.style.gridTemplateColumns=blockEntries.length===1?"1fr":"1fr 1fr";
   el.innerHTML=blockEntries.map(([k,b])=>{
-    const total=b.rooms.reduce((s,r)=>s+(BR_ROOM_DATA[r.no]||[]).filter(n=>n.trim()).length,0);
+    // ছাত্র সংখ্যা এখন লাইভ allStudents তালিকা থেকে গণনা করা হয় (স্ট্যাটিক BR_ROOM_DATA থেকে নয়),
+    // যাতে নতুন ছাত্র ভর্তি বা মুছে ফেললে সংখ্যাটি সাথে সাথে হালনাগাদ হয়
+    if(typeof allStudents!=='undefined' && allStudents.length===0 && typeof assignRooms==='function') assignRooms();
+    const total=(typeof allStudents!=='undefined')
+      ? allStudents.filter(s=>(s.block||s.blk)===k).length
+      : b.rooms.reduce((s,r)=>s+(BR_ROOM_DATA[r.no]||[]).filter(n=>n.trim()).length,0);
     const cap=b.rooms.reduce((s,r)=>s+r.cap,0);
     const pct=Math.round(total/cap*100);
     return `<div class="db-block-card" onclick="goBlockRooms('${k}')"
@@ -11556,5 +11757,196 @@ function erMarkReturned(id){
   alert('✅ '+rec.stuName+' এখন থেকে "উপস্থিত" হিসেবে দেখানো হবে।');
 }
 </script>
+
+<!-- ══ PAGE: আজ পর্যন্ত সম্পূর্ণ রুটিন প্রতিবেদন (ব্লক-ভিত্তিক, লাইভ, ক্লিক করলে তালিকা) ══ -->
+<style>
+.rpfd-cat-card{background:#ffffff;border:1px solid #e2dbc7;border-radius:13px;margin:0 16px 12px;overflow:hidden;}
+.rpfd-cat-hd{padding:12px 14px;font-size:13px;font-weight:700;color:#24313b;background:#faf8f2;border-bottom:1px solid #e2dbc7;}
+.rpfd-blk-row{padding:10px 14px;border-bottom:1px solid #e2dbc720;}
+.rpfd-blk-row:last-child{border-bottom:none;}
+.rpfd-blk-name{font-size:11px;font-weight:700;color:#8b98a3;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
+.rpfd-blk-stats{display:flex;flex-wrap:wrap;gap:6px;}
+.rpfd-stat-chip{font-size:11px;font-weight:600;color:#34444f;background:#faf8f2;border:1.5px solid #e2dbc7;border-radius:20px;padding:5px 10px;cursor:pointer;}
+.rpfd-stat-chip:active{background:#e2dbc740;}
+.rpfd-stat-chip.muted{color:#8b98a3;}
+</style>
+<div id="page-routine-report-full" class="page" style="background:#faf8f2;min-height:100vh;padding-bottom:80px;">
+  <div class="topbar">
+    <div class="tb-back" onclick="goDashboard()">←</div>
+    <div class="tb-info"><div class="tb-title">🕐 আজকের সম্পূর্ণ রুটিন প্রতিবেদন</div><div class="tb-sub" id="rpfd-time-sub">লোড হচ্ছে...</div></div>
+  </div>
+  <div style="padding:14px 16px 0;font-size:11px;color:#8b98a3;">যে রুটিনগুলোর সময় এখনো শুরু হয়নি সেগুলো এখানে দেখানো হয়নি। প্রতিটি সংখ্যায় ট্যাপ করলে ছাত্রদের নাম দেখা যাবে।</div>
+  <div id="rpfd-content" style="padding-top:12px;"></div>
+</div>
+
+<script>
+// প্রতিটি রুটিন ক্যাটাগরি — নিজস্ব META কনফিগ পুনর্ব্যবহার করা হয়েছে, তাই নতুন কোনো স্ট্যাটাস
+// যোগ হলে (ptype:'minus'/'plus' দিয়ে চিহ্নিত) এখানেও স্বয়ংক্রিয়ভাবে চলে আসবে।
+const RP_FD_CATEGORIES = [
+  {id:'fajr',        label:'ফজর সালাত',                    icon:'🕌', startHour:5,  startMin:0,  path:'namaz',          prayer:'ফজর',    meta:()=>NAMAZ_STATUS},
+  {id:'arabic',      label:'আরবি ক্লাস',                    icon:'📖', startHour:7,  startMin:0,  path:'arabicClass',                     meta:()=>AC_OPTIONS},
+  {id:'cleanliness', label:'পরিচ্ছন্নতা ও সকালের পড়া',       icon:'🧹', startHour:7,  startMin:0,  path:'cleanliness',                     meta:()=>CC_META},
+  {id:'uniform',     label:'ইউনিফর্ম পরে ক্লাসে যাওয়া',      icon:'👔', startHour:8,  startMin:0,  path:'uniform',                         meta:()=>UF_OPTIONS},
+  {id:'sickclassskip', label:'অসুস্থতা ও ক্লাস ফাঁকি',      icon:'🏥', startHour:8,  startMin:40, path:'sickClassSkip', dataAdapter:raw=>raw.marks||{}, meta:()=>SC_META},
+  {id:'zohr',        label:'জোহর নামাজ ও দুপুরের খাবার',      icon:'🕌', startHour:13, startMin:20, path:'zohrLunch',                       meta:()=>ZL_META},
+  {id:'sickfollowup', label:'অসুস্থ শিক্ষার্থীদের খোঁজখবর',  icon:'🏥', startHour:13, startMin:0,  path:'sickFollowup',                    meta:()=>SF_COND,
+    studentsFilter: s=>(typeof hlRecords!=='undefined') && hlRecords.some(r=>r.stuName===s.name.toUpperCase() && (r.status==='active'||r.status==='recovering'))},
+  {id:'afternoon',   label:'দুপুরের পড়া ও বিশ্রাম',          icon:'📚', startHour:14, startMin:30, path:'afternoonStudy',                  meta:()=>AS_OPTIONS},
+  {id:'asr',         label:'আসর সালাত',                     icon:'🕌', startHour:16, startMin:0,  path:'namaz',          prayer:'আসর',    meta:()=>NAMAZ_STATUS},
+  {id:'maghrib',     label:'মাগরিব সালাত',                  icon:'🕌', startHour:18, startMin:0,  path:'namaz',          prayer:'মাগরিব', meta:()=>NAMAZ_STATUS},
+  {id:'evening',     label:'সন্ধ্যার পড়া',                   icon:'📝', startHour:18, startMin:0,  path:'eveningStudy',                    meta:()=>ES_OPTIONS},
+  {id:'isha',        label:'এশা নামাজ ও রাতের খাবার',         icon:'🕌', startHour:20, startMin:0,  path:'ishaDinner',                      meta:()=>ID_META},
+  {id:'night',       label:'রাতের পড়া ও বিশ্রাম',            icon:'🌙', startHour:21, startMin:0,  path:'nightStudyRest',                  meta:()=>NR_META},
+  {id:'nightfinal',  label:'রাতের হাজিরা',                  icon:'🛌', startHour:22, startMin:0,  path:'nightFinalCheck',                 meta:()=>NFC_META},
+];
+let RP_FD_LIST_CACHE = {};
+
+function goRoutineFullReport(){
+  rpFullDayRender();
+  showPage('routine-report-full');
+}
+
+// যেকোনো মার্কিং-ভ্যালু (ফ্ল্যাট স্ট্রিং / গ্রুপ-অবজেক্ট / চেকবক্স-অবজেক্ট)-কে তার META অনুযায়ী
+// স্ট্যাটাস-ভিত্তিক দলে ভাগ করে — যারা এখনো চিহ্নিতই হয়নি তাদের আলাদাভাবে দেখানো হয়
+function rpFdGroup(students, markData, metaObj){
+  const buckets = {};
+  const unmarked = [];
+  students.forEach(s=>{
+    const raw = markData[s.serial];
+    let any = false;
+    const add = key=>{
+      const m = metaObj[key];
+      if(!m) return;
+      any = true;
+      if(!buckets[key]) buckets[key] = {label:m.label, ico:m.ico, students:[]};
+      buckets[key].students.push(s);
+    };
+    if(raw!=null){
+      if(typeof raw === 'string') add(raw);
+      else if(typeof raw === 'object'){
+        Object.entries(raw).forEach(([k,v])=>{
+          if(v===true) add(k);
+          else if(typeof v === 'string') add(v);
+        });
+      }
+    }
+    if(!any) unmarked.push(s);
+  });
+  return {buckets, unmarked};
+}
+
+function rpFdShowList(listId){
+  const item = RP_FD_LIST_CACHE[listId];
+  if(!item) return;
+  document.getElementById('nsOptTitle').textContent = item.title;
+  const listEl = document.getElementById('nsOptList');
+  if(!item.students.length){
+    listEl.innerHTML = '<div style="text-align:center;color:#5c6f7a;font-size:13px;padding:10px 0;">কোনো ছাত্র নেই</div>';
+  } else {
+    listEl.innerHTML = item.students.map(s=>`
+      <div class="ns-opt-btn" style="cursor:pointer" onclick="nsCloseOptions(); showStudentProfile(${s.serial},'noncompliance')">
+        <span class="ns-opt-txt">${s.name}</span>
+        <span style="font-size:11px;color:#5c6f7a;">${CLASS_BN[s.cls]||s.cls} • রুম ${s.room}</span>
+      </div>`).join('');
+  }
+  document.getElementById('nsOptionsOverlay').classList.remove('hide');
+}
+
+// ── খেলাধুলা — ব্লক-ভিত্তিক (ছাত্র-ভিত্তিক নয়) টিকচিহ্নের প্রতিবেদন অংশ ──
+async function rpFdRenderSports(blocks, cycle){
+  const dueMin = hostelCycleElapsed(16,0); // বিকেল — খেলাধুলার আনুমানিক সময়
+  if(dueMin > cycle.elapsedNow) return '';
+  const dateStr = cycle.endDate.toDateString(); // sportsMarks এই ফরম্যাটের কী ব্যবহার করে
+  const rows = await Promise.all(blocks.map(async blk=>{
+    const v = await fbGetOnce('sportsMarks/'+blk+'_'+dateStr);
+    return {blk, done: !!(v && v.checked)};
+  }));
+  let html = `<div class="rpfd-cat-card"><div class="rpfd-cat-hd">⛹️ খেলাধুলা</div>`;
+  rows.forEach(r=>{
+    html += `<div class="rpfd-blk-row"><div class="rpfd-blk-name">ব্লক ${r.blk}</div><div class="rpfd-blk-stats">
+      <span class="rpfd-stat-chip ${r.done?'':'muted'}">${r.done?'✅ সম্পন্ন':'⬜ এখনো হয়নি'}</span>
+    </div></div>`;
+  });
+  html += `</div>`;
+  return html;
+}
+
+async function rpFullDayRender(){
+  if(allStudents.length===0) assignRooms();
+  const cycle = hostelCycleKeys();
+  const dd = d => bnDigits(d.getDate())+' '+["জানুয়ারি","ফেব্রুয়ারি","মার্চ","এপ্রিল","মে","জুন","জুলাই","আগস্ট","সেপ্টেম্বর","অক্টোবর","নভেম্বর","ডিসেম্বর"][d.getMonth()];
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2,'0'), mm = String(now.getMinutes()).padStart(2,'0');
+  document.getElementById('rpfd-time-sub').textContent = 'মাগরিব, '+dd(cycle.startDate)+' — মাগরিব, '+dd(cycle.endDate)+' (এখন পর্যন্ত '+bnDigits(hh+':'+mm)+')';
+
+  const wrap = document.getElementById('rpfd-content');
+  wrap.innerHTML = '<div class="nc-empty">⏳ লোড হচ্ছে...</div>';
+
+  const myBlk = getMyRestrictedBlock();
+  const blocks = myBlk ? [myBlk] : ['A','B','C','D'];
+
+  const onLeave = new Set();
+  if(typeof lvRecords!=='undefined' && typeof lvIsActiveToday==='function'){
+    allStudents.forEach(s=>{ if(lvRecords.some(r=>r.stuSerial===s.serial && lvIsActiveToday(r))) onLeave.add(s.serial); });
+  }
+
+  const dueCats = RP_FD_CATEGORIES.filter(c=> hostelCycleElapsed(c.startHour, c.startMin) <= cycle.elapsedNow);
+  const sportsDue = hostelCycleElapsed(16,0) <= cycle.elapsedNow;
+  if(dueCats.length===0 && !sportsDue){
+    wrap.innerHTML = '<div class="nc-empty">⏳ আজকের প্রথম রুটিন এখনো শুরু হয়নি।</div>';
+    return;
+  }
+
+  // প্রতিটি ক্যাটাগরির জন্য কোন তারিখ-কী থেকে ডেটা আনতে হবে তা নির্ধারণ করে একবারই fetch করা হয়
+  const fetchKeys = [...new Set(dueCats.map(c=>c.path+'|'+hostelCycleKeyFor(c.startHour,c.startMin,cycle)))];
+  const fetched = {};
+  await Promise.all(fetchKeys.map(async pk=>{
+    const sep = pk.indexOf('|');
+    const p = pk.slice(0,sep), dk = pk.slice(sep+1);
+    fetched[pk] = await ncFetchDate(p, dk);
+  }));
+
+  RP_FD_LIST_CACHE = {};
+  let html = '';
+  dueCats.forEach(cat=>{
+    const dateKey = hostelCycleKeyFor(cat.startHour, cat.startMin, cycle);
+    const raw = fetched[cat.path+'|'+dateKey] || {};
+    let markData;
+    if(cat.prayer) markData = raw[cat.prayer] || {};
+    else if(cat.dataAdapter) markData = cat.dataAdapter(raw) || {};
+    else markData = raw;
+    const metaObj = cat.meta();
+    html += `<div class="rpfd-cat-card"><div class="rpfd-cat-hd">${cat.icon} ${cat.label}</div>`;
+    blocks.forEach(blk=>{
+      let students = allStudents.filter(s=>(s.block||s.blk)===blk && !onLeave.has(s.serial));
+      if(cat.studentsFilter) students = students.filter(cat.studentsFilter);
+      html += `<div class="rpfd-blk-row"><div class="rpfd-blk-name">ব্লক ${blk} (${bnDigits(students.length)} জন)</div><div class="rpfd-blk-stats">`;
+      if(cat.studentsFilter && students.length===0){
+        html += `<span class="rpfd-stat-chip muted">কোনো অসুস্থ ছাত্র নেই</span>`;
+        html += `</div></div>`;
+        return;
+      }
+      const {buckets, unmarked} = rpFdGroup(students, markData, metaObj);
+      Object.entries(buckets).forEach(([key,b])=>{
+        const listId = cat.id+'_'+blk+'_'+key;
+        RP_FD_LIST_CACHE[listId] = {title: cat.icon+' '+cat.label+' — ব্লক '+blk+' — '+b.label+' ('+b.students.length+' জন)', students: b.students};
+        html += `<span class="rpfd-stat-chip" onclick="rpFdShowList('${listId}')">${b.ico} ${b.label}: <b>${bnDigits(b.students.length)}</b></span>`;
+      });
+      if(unmarked.length>0){
+        const listId = cat.id+'_'+blk+'_unmarked';
+        RP_FD_LIST_CACHE[listId] = {title: cat.icon+' '+cat.label+' — ব্লক '+blk+' — এখনো চিহ্নিত হয়নি ('+unmarked.length+' জন)', students: unmarked};
+        html += `<span class="rpfd-stat-chip muted" onclick="rpFdShowList('${listId}')">⬜ চিহ্নিত হয়নি: <b>${bnDigits(unmarked.length)}</b></span>`;
+      }
+      html += `</div></div>`;
+    });
+    html += `</div>`;
+  });
+
+  if(sportsDue) html += await rpFdRenderSports(blocks, cycle);
+
+  wrap.innerHTML = html;
+}
+</script>
 </body>
 </html>
+
