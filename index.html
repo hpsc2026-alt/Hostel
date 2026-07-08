@@ -1759,7 +1759,7 @@ function acToggle(serial, optKey){
   if(!acMarks[serial]) acMarks[serial] = {};
   const current = acMarks[serial][o.group];
   const turningOn = current !== optKey;
-  acMarks[serial][o.group] = turningOn ? optKey : undefined;
+  acMarks[serial][o.group] = turningOn ? optKey : null;
   acRenderList();
 
   fbSet('arabicClass/'+fbTodayKey()+'/'+serial, acMarks[serial]);
@@ -3013,7 +3013,7 @@ function ccToggle(serial, optKey){
   if(!ccMarks[serial]) ccMarks[serial] = {};
   const current = ccMarks[serial][o.group];
   const turningOn = current !== optKey;
-  ccMarks[serial][o.group] = turningOn ? optKey : undefined;
+  ccMarks[serial][o.group] = turningOn ? optKey : null;
 
   const {user, blk, students} = nsGetBlockStudents();
   const stu = students.find(s=>s.serial===serial) || allStudents.find(s=>s.serial===serial);
@@ -3481,7 +3481,9 @@ const ZL_META = {
   jamaat:     {label:'জামাতে নামাজ পড়েছে', ico:'🕌', group:'prayer', negative:false, pts:1, ptype:'plus',  cat:'good', desc:'জোহর নামাজ জামাতে আদায় করেছে।'},
   no_jamaat:  {label:'জামাত পায়নি',        ico:'🚶', group:'prayer', negative:true,  pts:1, ptype:'minus', cat:'namaz', desc:'জামাতে জোহর নামাজ পায়নি।'},
   absent_zl:  {label:'নামাজে আসেনি',        ico:'❌', group:'prayer', negative:true,  pts:2, ptype:'minus', cat:'namaz', desc:'জোহর নামাজে অংশগ্রহণ করেনি।'},
-  lunch_done: {label:'দুপুরের খাবার খেয়েছে', ico:'🍽️', group:'lunch',  negative:false, pts:1, ptype:'plus',  cat:'good', desc:'যথাসময়ে দুপুরের খাবার খেয়েছে।'},
+  lunch_done:   {label:'দুপুরের খাবার খেয়েছে',      ico:'🍽️', group:'lunch',  negative:false, pts:1, ptype:'plus',  cat:'good',  desc:'যথাসময়ে দুপুরের খাবার খেয়েছে।'},
+  lunch_late:   {label:'দেরিতে খাবার খেয়েছে',      ico:'⏰', group:'lunch',  negative:true,  pts:1, ptype:'minus', cat:'other', desc:'দেরিতে দুপুরের খাবার খেয়েছে।'},
+  lunch_missed: {label:'দুপুরের খাবার খায়নি',       ico:'❌', group:'lunch',  negative:true,  pts:1, ptype:'minus', cat:'other', desc:'দুপুরের খাবার খায়নি।'},
 };
 let zlMarks = {};      // { serial: {prayer:'jamaat'|'no_jamaat'|'absent_zl', lunch:'lunch_done'} } — আজকের মার্কিং
 let zlFinalized = false;
@@ -3514,7 +3516,7 @@ function zlToggle(serial, optKey){
   if(!zlMarks[serial]) zlMarks[serial] = {};
   const current = zlMarks[serial][o.group];
   const turningOn = current !== optKey;
-  zlMarks[serial][o.group] = turningOn ? optKey : undefined;
+  zlMarks[serial][o.group] = turningOn ? optKey : null;
 
   const {user, blk, students} = nsGetBlockStudents();
   const stu = students.find(s=>s.serial===serial) || allStudents.find(s=>s.serial===serial);
@@ -3557,7 +3559,7 @@ function zlRenderRows(students){
       <div class="cc-row-name">${s.name}</div>
       <div class="cc-row-cls">${CLASS_BN[s.cls]} শ্রেণী • রুম ${s.room}</div>
       <div class="cc-check-grid">
-        ${zlCheckChip(s,'jamaat')}${zlCheckChip(s,'no_jamaat')}${zlCheckChip(s,'absent_zl')}${zlCheckChip(s,'lunch_done')}
+        ${zlCheckChip(s,'jamaat')}${zlCheckChip(s,'no_jamaat')}${zlCheckChip(s,'absent_zl')}${zlCheckChip(s,'lunch_done')}${zlCheckChip(s,'lunch_late')}${zlCheckChip(s,'lunch_missed')}
       </div>
     </div>`;
   }).join('');
@@ -3597,9 +3599,14 @@ function zlFinalize(){
   if(!confirm('⚠️ উইন্ডো চূড়ান্ত করলে যেসব ছাত্র "দুপুরের খাবার খেয়েছে" চিহ্নিত হয়নি, তাদের জন্য স্বয়ংক্রিয়ভাবে নেতিবাচক পারফরম্যান্স রেকর্ড যোগ হবে। এগিয়ে যেতে চান?')) return;
   let missed = 0;
   students.forEach(s=>{
-    const m = zlMarks[s.serial] || {};
-    if(m.lunch !== 'lunch_done'){
+    if(!zlMarks[s.serial]) zlMarks[s.serial] = {};
+    const m = zlMarks[s.serial];
+    // ইতিমধ্যে "দেরিতে খেয়েছে" হিসেবে ম্যানুয়ালি চিহ্নিত থাকলে তা বদলানো হবে না,
+    // শুধু যাদের লাঞ্চ গ্রুপে কোনো টিক-ই নেই তাদেরই "খায়নি" হিসেবে চিহ্নিত করা হয়
+    if(m.lunch !== 'lunch_done' && m.lunch !== 'lunch_late'){
       missed++;
+      m.lunch = 'lunch_missed';
+      fbSet('zohrLunch/'+fbTodayKey()+'/'+s.serial, m);
       if(typeof bhRecords!=='undefined'){
         const rec = {id:bhNextId++, stuName:s.name.toUpperCase(), cls:s.cls, blk:(s.block||s.blk), cat:'other', desc:'যথাসময়ে দুপুরের খাবার খায়নি।', type:'minus', pts:1, time:'এইমাত্র', by:user.name, ts:Date.now()};
         bhRecords.unshift(rec);
@@ -3738,7 +3745,9 @@ const ID_META = {
   jamaat:      {label:'জামাতে নামাজ পড়েছে',  ico:'🕌', group:'prayer', negative:false, pts:1, ptype:'plus',  cat:'good', desc:'এশা নামাজ জামাতে আদায় করেছে।'},
   no_jamaat:   {label:'জামাত পায়নি',         ico:'🚶', group:'prayer', negative:true,  pts:1, ptype:'minus', cat:'namaz', desc:'জামাতে এশা নামাজ পায়নি।'},
   absent_id:   {label:'নামাজে আসেনি',         ico:'❌', group:'prayer', negative:true,  pts:2, ptype:'minus', cat:'namaz', desc:'এশা নামাজে অংশগ্রহণ করেনি।'},
-  dinner_done: {label:'রাতের খাবার খেয়েছে',   ico:'🍽️', group:'dinner', negative:false, pts:1, ptype:'plus',  cat:'good', desc:'যথাসময়ে রাতের খাবার খেয়েছে।'},
+  dinner_done:   {label:'রাতের খাবার খেয়েছে',   ico:'🍽️', group:'dinner', negative:false, pts:1, ptype:'plus',  cat:'good',  desc:'যথাসময়ে রাতের খাবার খেয়েছে।'},
+  dinner_late:   {label:'দেরিতে খাবার খেয়েছে',  ico:'⏰', group:'dinner', negative:true,  pts:1, ptype:'minus', cat:'other', desc:'দেরিতে রাতের খাবার খেয়েছে।'},
+  dinner_missed: {label:'রাতের খাবার খায়নি',    ico:'❌', group:'dinner', negative:true,  pts:1, ptype:'minus', cat:'other', desc:'রাতের খাবার খায়নি।'},
 };
 let idMarks = {};
 let idUnsubscribe = null;
@@ -3769,7 +3778,7 @@ function idToggle(serial, optKey){
   if(!idMarks[serial]) idMarks[serial] = {};
   const current = idMarks[serial][o.group];
   const turningOn = current !== optKey;
-  idMarks[serial][o.group] = turningOn ? optKey : undefined;
+  idMarks[serial][o.group] = turningOn ? optKey : null;
 
   const {user, blk, students} = nsGetBlockStudents();
   const stu = students.find(s=>s.serial===serial) || allStudents.find(s=>s.serial===serial);
@@ -3809,7 +3818,7 @@ function idRenderRows(students){
       <div class="cc-row-name">${s.name}</div>
       <div class="cc-row-cls">${CLASS_BN[s.cls]} শ্রেণী • রুম ${s.room}</div>
       <div class="cc-check-grid">
-        ${idCheckChip(s,'jamaat')}${idCheckChip(s,'no_jamaat')}${idCheckChip(s,'absent_id')}${idCheckChip(s,'dinner_done')}
+        ${idCheckChip(s,'jamaat')}${idCheckChip(s,'no_jamaat')}${idCheckChip(s,'absent_id')}${idCheckChip(s,'dinner_done')}${idCheckChip(s,'dinner_late')}${idCheckChip(s,'dinner_missed')}
       </div>
     </div>`;
   }).join('');
@@ -3845,9 +3854,12 @@ function idFinalize(){
   if(!confirm('⚠️ উইন্ডো চূড়ান্ত করলে যেসব ছাত্র "রাতের খাবার খেয়েছে" চিহ্নিত হয়নি, তাদের জন্য স্বয়ংক্রিয়ভাবে নেতিবাচক পারফরম্যান্স রেকর্ড যোগ হবে। এগিয়ে যেতে চান?')) return;
   let missed = 0;
   students.forEach(s=>{
-    const m = idMarks[s.serial] || {};
-    if(m.dinner !== 'dinner_done'){
+    if(!idMarks[s.serial]) idMarks[s.serial] = {};
+    const m = idMarks[s.serial];
+    if(m.dinner !== 'dinner_done' && m.dinner !== 'dinner_late'){
       missed++;
+      m.dinner = 'dinner_missed';
+      fbSet('ishaDinner/'+fbTodayKey()+'/'+s.serial, m);
       if(typeof bhRecords!=='undefined'){
         const rec = {id:bhNextId++, stuName:s.name.toUpperCase(), cls:s.cls, blk:(s.block||s.blk), cat:'other', desc:'যথাসময়ে রাতের খাবার খায়নি।', type:'minus', pts:1, time:'এইমাত্র', by:user.name, ts:Date.now()};
         bhRecords.unshift(rec);
@@ -6336,10 +6348,9 @@ function bhLoadHistoryFromFirebase(){
     if(document.getElementById('page-behaviour')?.classList.contains('active')) bhRender();
     // নতুন অভিযোগ/আচরণ রেকর্ড সিঙ্ক হলে অভিযোগ কেন্দ্র পেজ খোলা থাকলে সেটাও সাথে সাথে রিফ্রেশ হবে
     if(document.getElementById('page-complaint-center')?.classList.contains('active') && typeof ogRender==='function') ogRender();
-    // ড্যাশবোর্ডে থাকলে "অভিযোগ" রিমাইন্ডার ব্যানারও সাথে সাথে আপডেট হবে
-    if(document.getElementById('page-dashboard')?.classList.contains('active') && typeof ogRenderReminder==='function'){
-      const su = getSessionUser();
-      ogRenderReminder(su);
+    // ড্যাশবোর্ডে থাকলে "অভিযোগ"/"অ্যালার্ট" সংখ্যা ও রিমাইন্ডার ব্যানার — সবই সাথে সাথে আপডেট হবে
+    if(document.getElementById('page-dashboard')?.classList.contains('active') && typeof renderDashboard==='function'){
+      renderDashboard();
     }
   });
 }
@@ -10834,7 +10845,7 @@ async function ncBuildTodayIssues(){
   if(allStudents.length===0) assignRooms();
   const cycle = hostelCycleKeys();
 
-  const [cc, uf, nsEnd, nsStart, zl, id, es, nr, ac, sc] = await Promise.all([
+  const [cc, uf, nsEnd, nsStart, zl, id, es, nr, ac, sc, db] = await Promise.all([
     ncFetchDate('cleanliness',    cycle.endKey),   // সকাল ৭:০০
     ncFetchDate('uniform',        cycle.endKey),   // সকাল ৮:০০
     ncFetchDate('namaz',          cycle.endKey),   // ফজর, আসর — চক্রের শেষের দিনে রেকর্ড হয়
@@ -10845,6 +10856,7 @@ async function ncBuildTodayIssues(){
     ncFetchDate('nightStudyRest', cycle.startKey), // রাত ৯:০০
     ncFetchDate('arabicClass',    cycle.endKey),   // সকাল ৭:০০
     ncFetchDate('sickClassSkip',  cycle.endKey),   // সকাল ৮:৪০-৯:৩০
+    ncFetchDate('diningBreakfast',cycle.endKey),   // সকাল ৯:৩০ — সকালের নাস্তা
   ]);
   const nsF = nsEnd['ফজর'] || {};
   const nsA = nsEnd['আসর'] || {};
@@ -10875,6 +10887,7 @@ async function ncBuildTodayIssues(){
     issues.push(...ncMetaIssues(nr[sid], NR_META, 'nr'));
     if(!nsIsReligionExempt(s) && ARABIC_ASSIGNMENT[sid]) issues.push(...ncMetaIssues(ac[sid], AC_OPTIONS, 'ac'));
     issues.push(...ncMetaIssues(scMarksData[sid], SC_META, 'sc'));
+    issues.push(...ncMetaIssues(db[sid], DB_OPTIONS, 'db'));
 
     if(issues.length>0) result.push({...s, issues});
   });
@@ -10963,7 +10976,7 @@ async function ncBuildHistoryIndex(){
   const startKey = fbDateKey(startBoundary);
   const endKey = fbDateKey(today);
 
-  const [ccR, ufR, nsR, zlR, idR, esR, nrR, acR, scR] = await Promise.all([
+  const [ccR, ufR, nsR, zlR, idR, esR, nrR, acR, scR, dbR] = await Promise.all([
     fbGetRange('cleanliness',    startKey, endKey),
     fbGetRange('uniform',        startKey, endKey),
     fbGetRange('namaz',          startKey, endKey),
@@ -10973,6 +10986,7 @@ async function ncBuildHistoryIndex(){
     fbGetRange('nightStudyRest', startKey, endKey),
     fbGetRange('arabicClass',    startKey, endKey),
     fbGetRange('sickClassSkip',  startKey, endKey),
+    fbGetRange('diningBreakfast',startKey, endKey),
   ]);
 
   const index = {}; // { [serial]: { [issueKey]: [dateKey, ...] } }
@@ -11004,6 +11018,7 @@ async function ncBuildHistoryIndex(){
     const nr = nrR[sKey] || {};
     const ac = acR[eKey] || {};
     const scMarksData = (scR[eKey]||{}).marks || {};
+    const db = dbR[eKey] || {};
 
     allStudents.forEach(s=>{
       const sid = s.serial;
@@ -11021,6 +11036,7 @@ async function ncBuildHistoryIndex(){
       dayIssues.push(...ncMetaIssues(nr[sid], NR_META, 'nr'));
       if(!nsIsReligionExempt(s)) dayIssues.push(...ncMetaIssues(ac[sid], AC_OPTIONS, 'ac'));
       dayIssues.push(...ncMetaIssues(scMarksData[sid], SC_META, 'sc'));
+      dayIssues.push(...ncMetaIssues(db[sid], DB_OPTIONS, 'db'));
       dayIssues.forEach(iss=>addEntry(sid, iss.key, eKey));
     });
 
@@ -12766,9 +12782,15 @@ function lvFmtDate(d){
 function lvTodayISO(){ return lvISO(new Date()); }
 
 // রেকর্ডটি আজকের তারিখে সক্রিয় (চলমান) কিনা
+// লক্ষ্য করুন: ছুটির নির্ধারিত শেষ তারিখ (toISO) পার হয়ে গেলেও, হোস্টেল সুপার/অ্যাডমিন
+// "✅ আজই ফিরে এসেছে" চেপে (erMarkReturned) সরাসরি নিশ্চিত না করা পর্যন্ত ছাত্রটি "ছুটিতে/অনুপস্থিত"
+// হিসেবেই গণ্য হতে থাকবে। এতে কেউ নির্ধারিত তারিখে সত্যিই না ফিরলেও সে স্বয়ংক্রিয়ভাবে "উপস্থিত"
+// হয়ে ব্লকের দৈনন্দিন রিপোর্ট তালিকায় ভুলবশত চলে আসবে না — শুধু সুপারের সুস্পষ্ট নিশ্চিতকরণেই সে
+// আবার উপস্থিত/রিপোর্টযোগ্য হিসেবে গণ্য হবে।
 function lvIsActiveToday(r){
+  if(r.returnedEarly) return false; // সুপার/অ্যাডমিন ইতিমধ্যে ফেরা নিশ্চিত করেছেন
   const today = lvTodayISO();
-  return r.fromISO<=today && today<=r.toISO;
+  return r.fromISO<=today;
 }
 
 function lvBuildDateOptions(){
@@ -13086,7 +13108,8 @@ fbListen('studentRoster', data=>{
   </div>
 
   <div style="margin:14px 16px;background:#f7ecd6;border:1px solid #e6cf9e;border-radius:12px;padding:12px 14px;font-size:12px;color:#5c6f7a;line-height:1.6;">
-    💡 ছুটি শেষ হওয়ার তারিখের আগেই যদি কোনো ছাত্র হোস্টেলে ফিরে আসে, নিচের তালিকা থেকে তার নামের পাশে "✅ আজই ফিরে এসেছে" বাটনে চাপুন — সাথে সাথে সে "উপস্থিত" হিসেবে দেখাবে, ছুটির নির্ধারিত শেষ তারিখ পর্যন্ত অপেক্ষা করতে হবে না।
+    💡 ছুটি শেষ হওয়ার তারিখের আগেই যদি কোনো ছাত্র হোস্টেলে ফিরে আসে, নিচের তালিকা থেকে তার নামের পাশে "✅ আজই ফিরে এসেছে" বাটনে চাপুন — সাথে সাথে সে "উপস্থিত" হিসেবে দেখাবে, ছুটির নির্ধারিত শেষ তারিখ পর্যন্ত অপেক্ষা করতে হবে না।<br><br>
+    ⚠️ নির্ধারিত ছুটি শেষ হওয়ার তারিখ পার হয়ে গেলেও ছাত্রটি ততক্ষণ "ছুটিতে/অনুপস্থিত" হিসেবেই গণ্য থাকবে, যতক্ষণ না এখান থেকে তার ফেরা নিশ্চিত করা হয় — এতে সত্যিকারভাবে না ফেরা কোনো ছাত্র ভুলবশত ব্লকের দৈনন্দিন রিপোর্ট তালিকায় চলে আসবে না।
   </div>
 
   <div id="er-list"></div>
@@ -13122,7 +13145,9 @@ function erRenderList(){
     el.innerHTML = '<div style="text-align:center;padding:40px 16px;color:#8b98a3"><div style="font-size:36px;margin-bottom:10px">🏠</div><div>বর্তমানে কেউ ছুটিতে/বাড়িতে নেই</div></div>';
     return;
   }
-  el.innerHTML = activeRecs.map(r=>`
+  el.innerHTML = activeRecs.map(r=>{
+    const overdue = r.toISO < lvTodayISO();
+    return `
     <div class="lv-card">
       <div class="lv-top">
         <div class="lv-avatar">🏠</div>
@@ -13130,13 +13155,15 @@ function erRenderList(){
           <div class="lv-name" onclick="openStudentByName('${r.stuName.replace(/'/g,"\\'")}','early-return')">${r.stuName}</div>
           <div class="lv-meta">${CLASS_BN[r.cls]||r.cls} শ্রেণী • ব্লক ${r.blk}</div>
         </div>
+        ${overdue ? '<div style="font-size:10px;font-weight:700;color:#c94545;background:#fbe4e4;border-radius:10px;padding:3px 8px;">⚠️ মেয়াদ শেষ</div>' : ''}
       </div>
       <div class="lv-detail">
         <div class="lv-row"><span>📅 ছুটি</span><span>${r.from} – ${r.to}</span></div>
         <div class="lv-row"><span>📋 কারণ</span><span>${r.reason}</span></div>
       </div>
-      <button onclick="erMarkReturned('${r.id}')" style="width:100%;padding:11px;background:linear-gradient(135deg,#2f9e5c,#3db56f);border:none;border-radius:10px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">✅ আজই ফিরে এসেছে — উপস্থিত করুন</button>
-    </div>`).join('');
+      <button onclick="erMarkReturned('${r.id}')" style="width:100%;padding:11px;background:linear-gradient(135deg,#2f9e5c,#3db56f);border:none;border-radius:10px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">✅ ${overdue?'ফিরে এসেছে':'আজই ফিরে এসেছে'} — উপস্থিত করুন</button>
+    </div>`;
+  }).join('');
 }
 
 function erMarkReturned(id){
