@@ -10013,19 +10013,20 @@ async function srBuildScores(period){
 
   const obsSnap = fbReady ? await fbDb.ref('observations').orderByKey().startAt(range.start).endAt(range.end).once('value').then(s=>s.val()||{}).catch(()=>({})) : {};
 
-  // ── ধাপ ০ (v2.1): "রিপোর্ট দেওয়া বাকি" — এই পিরিয়ডের মধ্যে ৩+ দিন ধরে অমীমাংসিত থাকা রুটিন-রিপোর্ট গণনা,
-  // KPI পেনাল্টির জন্য। শুধু পিরিয়ডের রেঞ্জ পর্যন্ত ফেচ করা হয় (পুরো লাইফটাইম নয়) যাতে খরচ বাড়তি না হয় ──
+  // ── ধাপ ০ (v2.1): "রুটিন ইনপুট দেননি" — এই পিরিয়ডের মধ্যে ৩+ দিন ধরে ইনপুট না দেওয়া রুটিন-অংশ গণনা,
+  // KPI পেনাল্টির জন্য। ৮ জুলাই ২০২৬-এর আগে গণনা হয় না, এবং শুধু পিরিয়ডের রেঞ্জ পর্যন্ত ফেচ করা হয় ──
   let staleCountByBlk = {A:0,B:0,C:0,D:0};
   if(typeof rpFetchCategoryData==='function' && typeof rpEvaluateMissing==='function' && typeof rpCategoriesFor==='function'){
     try{
       const rpEndDate = new Date(Math.min(periodEnd, Date.now()-86400000)); // আজকে বাদ (চক্র চলমান)
       const rpEndKey = fbDateKey(rpEndDate);
-      if(rpEndKey >= range.start){
+      const rpStartKey = (typeof RP_TRACKING_START_KEY!=='undefined' && range.start < RP_TRACKING_START_KEY) ? RP_TRACKING_START_KEY : range.start;
+      if(rpEndKey >= rpStartKey){
         const rpCats = rpCategoriesFor('asst');
-        const rpData = await rpFetchCategoryData(rpCats, range.start, rpEndKey);
+        const rpData = await rpFetchCategoryData(rpCats, rpStartKey, rpEndKey);
         const cutoffKey = fbDateKey(new Date(Date.now()-(typeof RP_STALE_DAYS!=='undefined'?RP_STALE_DAYS:3)*86400000));
         ['A','B','C','D'].forEach(blk=>{
-          const items = rpEvaluateMissing('asst', blk, range.start, rpEndKey, rpData);
+          const items = rpEvaluateMissing('asst', blk, rpStartKey, rpEndKey, rpData);
           staleCountByBlk[blk] = items.filter(it=>!(typeof rpActions!=='undefined' && rpActions[it.itemKey]) && it.dateKey<=cutoffKey).length;
         });
       }
@@ -10173,7 +10174,7 @@ async function srRender(){
       if(s.lowSample && s.hasStuData) warnParts.push('নমুনা কম (n='+bnDigits(s.perfN)+') — নিরপেক্ষ গড়ের দিকে সমন্বিত');
       if(s.reassignedMidPeriod) warnParts.push('এই পিরিয়ডে ব্লক হাত বদল হয়েছে — ইতিহাস অনুযায়ী অ্যাট্রিবিউশন');
       if(s.selfReportRisk) warnParts.push('স্বার্থের দ্বন্দ্ব ঝুঁকি: বেশিরভাগ রেকর্ড নিজেই এন্ট্রি করা');
-      if(s.staleCount>0) warnParts.push('🗒️ '+bnDigits(s.staleCount)+'টা রিপোর্ট ৩+ দিন ধরে বাকি (−'+bnDigits(s.stalePenalty)+' পয়েন্ট)');
+      if(s.staleCount>0) warnParts.push('🗒️ '+bnDigits(s.staleCount)+'টা রুটিন ইনপুট দেননি — ৩+ দিন ধরে (−'+bnDigits(s.stalePenalty)+' পয়েন্ট)');
       const warn = warnParts.length ?
         `<div style="font-size:10px;color:#a9822f;margin-top:4px;">⚠️ ${warnParts.join(', ')}</div>` : '';
       const isMe = s.assignedId === currentUser.id;
@@ -10209,7 +10210,7 @@ function srShowBreakdown(blk){
     msg += '🔍 পরিদর্শন রেটিং ('+s.obsCount+'টা, ওজন '+Math.round(RANK_CONFIG.staff.obsWeight*100)+'%): '+(s.obsScore!==null?s.obsScore+'/১০০':'তথ্য নেই')+(s.needsMoreObs?' ⚠️ অপর্যাপ্ত':'')+'\n\n';
     if(s.reassignedMidPeriod) msg += '⚠️ এই পিরিয়ডে ব্লক হাত বদল হয়েছে — এসাইনমেন্ট-ইতিহাস অনুযায়ী অ্যাট্রিবিউট করা হয়েছে\n';
     if(s.selfReportRisk) msg += '⚠️ স্বার্থের দ্বন্দ্ব: '+s.selfReportedN+'/'+s.perfN+' রেকর্ড নিজেই এন্ট্রি করেছেন\n';
-    if(s.staleCount>0) msg += '🗒️ "রিপোর্ট দেওয়া বাকি": '+s.staleCount+'টা রুটিন-অংশ ৩+ দিন ধরে অমীমাংসিত — পেনাল্টি −'+s.stalePenalty+' পয়েন্ট\n';
+    if(s.staleCount>0) msg += '🗒️ "রুটিন ইনপুট দেননি": '+s.staleCount+'টা রুটিন-অংশ ৩+ দিন ধরে ইনপুট দেওয়া হয়নি — পেনাল্টি −'+s.stalePenalty+' পয়েন্ট\n';
     msg += '\n🏆 চূড়ান্ত স্কোর: '+s.total+'/১০০ (কনফিগ v'+RANK_CONFIG.version+')';
     alert(msg);
   });
@@ -13044,10 +13045,10 @@ const RP_FD_CATEGORIES = [
 ];
 let RP_FD_LIST_CACHE = {};
 
-// ══ "রিপোর্ট দেওয়া বাকি আছে" ══ — একজন হাউস টিউটর/আরবি শিক্ষকের সমগ্র মেয়াদে (ব্যবহারিকভাবে গত RP_LOOKBACK_DAYS দিন —
-// staff-এর প্রকৃত যোগদানের তারিখ ট্র্যাক করা হয় না বলে এটাই "লাইফটাইম"-এর ব্যবহারিক প্রক্সি) দৈনন্দিন রুটিনের
-// যেসব অংশে তিনি সম্পূর্ণ একবারও ইনপুট দেননি (পুরো দিন ফাঁকা) তার তালিকা — RP_FD_CATEGORIES-ই পুনর্ব্যবহার করা হচ্ছে।
-const RP_LOOKBACK_DAYS = 365;
+// ══ "রিপোর্ট দেওয়া বাকি আছে" ══ — এই ফিচার চালুর তারিখ (৮ জুলাই ২০২৬) থেকে আজ পর্যন্ত, একজন হাউস টিউটর/আরবি
+// শিক্ষকের দৈনন্দিন রুটিনের যেসব অংশে তিনি সম্পূর্ণ একবারও ইনপুট দেননি (পুরো দিন ফাঁকা — কতগুলো "রুটিন ইনপুট দেননি"
+// তা দেখানো হয়, কতগুলো "ইনপুট বাকি" তা নয়) তার তালিকা — RP_FD_CATEGORIES-ই পুনর্ব্যবহার করা হচ্ছে।
+const RP_TRACKING_START_KEY = '2026-07-08'; // এই ফিচার চালুর তারিখ — এর আগের কোনো ঘাটতি গণনা করা হয় না
 const RP_STALE_DAYS = 3; // এত দিন সমাধান (বাদ/পূরণ) না হলে KPI-তে নেগেটিভ প্রভাব পড়বে
 
 let rpActions = {}; // { itemKey: {status:'dismissed'|'filled', by, at, note} } — admin/super-এর সমাধান, Firebase-এ সংরক্ষিত
@@ -13076,7 +13077,8 @@ async function rpFetchCategoryData(cats, startKey, endKey){
   return dataByCategory;
 }
 
-// আগে থেকে fetch করা ডেটা থেকে (সিঙ্ক্রোনাসভাবে) একজন নির্দিষ্ট স্টাফের "রিপোর্ট বাকি" আইটেম বের করা
+// আগে থেকে fetch করা ডেটা থেকে (সিঙ্ক্রোনাসভাবে) একজন নির্দিষ্ট স্টাফের কতগুলো "রুটিন ইনপুট দেননি" তা বের করা
+// (প্রতিটি আইটেম মানে একটা পুরো দিনের একটা পুরো রুটিন-অংশ সম্পূর্ণ ফাঁকা — আংশিক/এক-দুই ছাত্র বাদ পড়াকে ধরা হয় না)
 function rpEvaluateMissing(staffType, staffKey, startKey, endKey, dataByCategory){
   const cats = rpCategoriesFor(staffType);
   const baseStudents = rpStudentsFor(staffType, staffKey);
@@ -13105,14 +13107,14 @@ function rpEvaluateMissing(staffType, staffKey, startKey, endKey, dataByCategory
   return items;
 }
 
-// একজনের জন্য সুবিধাজনক wrapper — নিজেই fetch + evaluate করে (ডিফল্টে লাইফটাইম রেঞ্জ, বা rangeOverride দিলে সেই রেঞ্জ)
+// একজনের জন্য সুবিধাজনক wrapper — নিজেই fetch + evaluate করে (ডিফল্টে ৮ জুলাই ২০২৬ থেকে আজ পর্যন্ত, বা rangeOverride দিলে সেই রেঞ্জ)
 async function rpBuildMissing(staffType, staffKey, rangeOverride){
   const cats = rpCategoriesFor(staffType);
   const today = new Date();
-  const lookbackStart = new Date(today); lookbackStart.setDate(lookbackStart.getDate()-RP_LOOKBACK_DAYS);
   const yesterday = new Date(today); yesterday.setDate(yesterday.getDate()-1);
   const yesterdayKey = fbDateKey(yesterday);
-  const startKey = rangeOverride ? rangeOverride.startKey : fbDateKey(lookbackStart);
+  const startKeyRaw = rangeOverride ? rangeOverride.startKey : RP_TRACKING_START_KEY;
+  const startKey = startKeyRaw < RP_TRACKING_START_KEY ? RP_TRACKING_START_KEY : startKeyRaw; // ৮ জুলাই ২০২৬-এর আগে গণনা হয় না
   const endKeyRaw = rangeOverride ? rangeOverride.endKey : yesterdayKey;
   const endKey = endKeyRaw > yesterdayKey ? yesterdayKey : endKeyRaw; // আজকের হোস্টেল-দিন এখনো চলমান, তাই বাদ
   if(endKey < startKey) return [];
@@ -13123,10 +13125,10 @@ async function rpBuildMissing(staffType, staffKey, rangeOverride){
 // সব হাউস টিউটর + সব আরবি শিক্ষকের জন্য একসাথে (একবারই ডেটা fetch করে) — অ্যাডমিন/সুপারের তালিকা-পেজের জন্য সাশ্রয়ী
 async function rpBuildMissingForAll(rangeOverride){
   const today = new Date();
-  const lookbackStart = new Date(today); lookbackStart.setDate(lookbackStart.getDate()-RP_LOOKBACK_DAYS);
   const yesterday = new Date(today); yesterday.setDate(yesterday.getDate()-1);
   const yesterdayKey = fbDateKey(yesterday);
-  const startKey = rangeOverride ? rangeOverride.startKey : fbDateKey(lookbackStart);
+  const startKeyRaw = rangeOverride ? rangeOverride.startKey : RP_TRACKING_START_KEY;
+  const startKey = startKeyRaw < RP_TRACKING_START_KEY ? RP_TRACKING_START_KEY : startKeyRaw;
   const endKeyRaw = rangeOverride ? rangeOverride.endKey : yesterdayKey;
   const endKey = endKeyRaw > yesterdayKey ? yesterdayKey : endKeyRaw;
   if(endKey < startKey) return {};
@@ -13172,7 +13174,7 @@ async function goReportPending(){
 // অ্যাডমিন/সুপারের জন্য — সব হাউস টিউটর ও আরবি শিক্ষকের তালিকা, কতজনের কতটা রিপোর্ট বাকি তা-সহ
 async function rpRenderStaffPicker(){
   document.getElementById('rpp-title').textContent = '🗒️ রিপোর্ট দেওয়া বাকি আছে — সবাই';
-  document.getElementById('rpp-sub').textContent = 'গত ১ বছরের মধ্যে যেসব দিনের রুটিন রিপোর্ট একেবারেই দেওয়া হয়নি';
+  document.getElementById('rpp-sub').textContent = '৮ জুলাই ২০২৬ থেকে আজ পর্যন্ত যেসব দিনের রুটিন ইনপুট দেওয়া হয়নি';
   const wrap = document.getElementById('rpp-content');
   wrap.innerHTML = '<div class="nc-empty">⏳ লোড হচ্ছে...</div>';
 
@@ -13191,7 +13193,7 @@ async function rpRenderStaffPicker(){
         <div class="rk-rank-num" style="background:${stale.length>0?'#fbeee0':'#eef1f4'};color:${stale.length>0?'#c94545':'#a9822f'};">${st.type==='arabic'?'📖':'🌙'}</div>
         <div class="rk-info">
           <div class="rk-name">${st.name}${st.type==='asst'?' (ব্লক '+st.key+')':' (আরবি শিক্ষক)'}</div>
-          <div class="rk-meta">অমীমাংসিত: ${bnDigits(unresolved.length)}${stale.length>0?' • ⚠️ ৩+ দিনের পুরনো: '+bnDigits(stale.length):''}</div>
+          <div class="rk-meta">${bnDigits(unresolved.length)}টি রুটিন ইনপুট দেননি${stale.length>0?' • ⚠️ ৩+ দিন ধরে: '+bnDigits(stale.length)+'টি':''}</div>
         </div>
         <div style="font-size:18px;color:#8b98a3;">›</div>
       </div>
@@ -13208,8 +13210,8 @@ async function rpOpenStaff(type, key){
     ? (ARABIC_TEACHER_NAMES[key]||key)
     : ((USERS.asst.find(u=>u.id===Object.keys(ASST_BLOCK_MAP).find(id=>ASST_BLOCK_MAP[id]===key))||{}).name || ('ব্লক '+key));
 
-  document.getElementById('rpp-title').textContent = '🗒️ '+name+' — রিপোর্ট বাকি';
-  document.getElementById('rpp-sub').textContent = 'গত ১ বছরের মধ্যে যেসব দিনের রুটিন রিপোর্ট একেবারেই দেওয়া হয়নি (তারিখ অনুযায়ী)';
+  document.getElementById('rpp-title').textContent = '🗒️ '+name+' — রুটিন ইনপুট দেয়নি';
+  document.getElementById('rpp-sub').textContent = '৮ জুলাই ২০২৬ থেকে আজ পর্যন্ত যেসব দিনের রুটিন ইনপুট দেওয়া হয়নি (তারিখ অনুযায়ী)';
   const wrap = document.getElementById('rpp-content');
   wrap.innerHTML = '<div class="nc-empty">⏳ লোড হচ্ছে...</div>';
   showPage('report-pending');
@@ -13222,7 +13224,7 @@ async function rpOpenStaff(type, key){
   const backBtn = canEdit ? `<div onclick="rpCurrentView=null;rpRenderStaffPicker();" style="cursor:pointer;font-size:12px;color:#5c6f7a;margin-bottom:10px;">← সবার তালিকায় ফিরে যান</div>` : '';
 
   if(!items.length){
-    wrap.innerHTML = backBtn + `<div style="text-align:center;padding:30px 16px;color:#2f9e5c;font-size:13px;">✅ কোনো অংশে রিপোর্ট বাকি নেই — চমৎকার!</div>`;
+    wrap.innerHTML = backBtn + `<div style="text-align:center;padding:30px 16px;color:#2f9e5c;font-size:13px;">✅ কোনো রুটিন ইনপুট বাকি নেই — চমৎকার!</div>`;
     return;
   }
 
@@ -13329,18 +13331,19 @@ async function arBuildScores(period){
   const withData = raw.filter(r=>r.hasStuData);
   const priorPerf = withData.length ? withData.reduce((s,r)=>s+r.rawPerf,0)/withData.length : 50;
 
-  // ── ধাপ ২: রিপোর্ট-সম্পূর্ণতা — এই পিরিয়ডে মোট কতদিনের মধ্যে কতদিন রিপোর্ট একেবারেই দেওয়া হয়নি ──
+  // ── ধাপ ২: রিপোর্ট-সম্পূর্ণতা — ৮ জুলাই ২০২৬ থেকে (এর আগে নয়) এই পিরিয়ডে মোট কতদিনের মধ্যে কতদিন রুটিন ইনপুট দেওয়া হয়নি ──
   const rpEndDate = new Date(Math.min(periodEnd, Date.now()-86400000)); // আজকে বাদ (চক্র চলমান)
   const rpEndKey = fbDateKey(rpEndDate);
-  const periodStartDate = new Date(range.start+'T00:00:00');
-  const totalDays = rpEndKey >= range.start ? (Math.round((rpEndDate-periodStartDate)/86400000)+1) : 0;
+  const rpStartKey = (typeof RP_TRACKING_START_KEY!=='undefined' && range.start < RP_TRACKING_START_KEY) ? RP_TRACKING_START_KEY : range.start;
+  const periodStartDate = new Date(rpStartKey+'T00:00:00');
+  const totalDays = rpEndKey >= rpStartKey ? (Math.round((rpEndDate-periodStartDate)/86400000)+1) : 0;
 
   let missingByTeacher = {};
   if(totalDays>0 && typeof rpFetchCategoryData==='function' && typeof rpCategoriesFor==='function'){
     try{
       const arCats = rpCategoriesFor('arabic');
-      const arData = await rpFetchCategoryData(arCats, range.start, rpEndKey);
-      teacherIds.forEach(tid=>{ missingByTeacher[tid] = rpEvaluateMissing('arabic', tid, range.start, rpEndKey, arData); });
+      const arData = await rpFetchCategoryData(arCats, rpStartKey, rpEndKey);
+      teacherIds.forEach(tid=>{ missingByTeacher[tid] = rpEvaluateMissing('arabic', tid, rpStartKey, rpEndKey, arData); });
     }catch(e){ console.error('আরবি র‍্যাংকিং: রিপোর্ট-সম্পূর্ণতা গণনা ব্যর্থ:', e); }
   }
 
@@ -13432,7 +13435,7 @@ async function arRender(){
       if(s.noAssignedStudents) warnParts.push('এখনো কোনো ছাত্র বণ্টন করা হয়নি');
       if(!s.hasStuData && !s.noAssignedStudents) warnParts.push('এই পিরিয়ডে কোনো রেকর্ড নেই');
       if(s.lowSample && s.hasStuData) warnParts.push('নমুনা কম (n='+bnDigits(s.perfN)+') — নিরপেক্ষ গড়ের দিকে সমন্বিত');
-      if(s.staleCount>0) warnParts.push('🗒️ '+bnDigits(s.staleCount)+'টা রিপোর্ট ৩+ দিন ধরে বাকি (−'+bnDigits(s.stalePenalty)+' পয়েন্ট)');
+      if(s.staleCount>0) warnParts.push('🗒️ '+bnDigits(s.staleCount)+'টা রুটিন ইনপুট দেননি — ৩+ দিন ধরে (−'+bnDigits(s.stalePenalty)+' পয়েন্ট)');
       const warn = warnParts.length ? `<div style="font-size:10px;color:#a9822f;margin-top:4px;">⚠️ ${warnParts.join(', ')}</div>` : '';
       const isMe = s.tid === currentUser.id;
       const meTag = isMe ? `<div style="font-size:10px;color:#1f7a63;font-weight:700;margin-top:4px;">👤 আপনি এখানে</div>` : '';
@@ -13734,6 +13737,48 @@ async function htRenderStaffWidget(){
   bodyEl.innerHTML = `<div class="staff-card">${cardsHtml}</div>`;
 }
 </script>
+
+<style>
+/* ══════════════════════════════════════════════════════════════════════════
+   ডেস্কটপ/বড় স্ক্রিনে প্রফেশনাল প্রেজেন্টেশন — "অ্যাপ ফ্রেম" ডিজাইন
+   এই অ্যাপ মোবাইল-অগ্রাধিকার দিয়ে ডিজাইন করা। বড় স্ক্রিনে সরাসরি পুরো প্রস্থে
+   স্ট্রেচ করলে টেক্সট-লাইন অতিরিক্ত লম্বা হয়ে যায়, বাটন/কার্ড অস্বাভাবিক বড়
+   দেখায় — যা "অ্যাপ" না মনে হয়ে "ভাঙা ওয়েবসাইট" মনে হওয়ার মূল কারণ।
+   সমাধান: ৬৪০px-এর বেশি প্রস্থে পুরো অ্যাপটাকে একটা কেন্দ্রীভূত, ফোন-অনুপাতের
+   "কার্ড" হিসেবে দেখানো হয় — সূক্ষ্ম শ্যাডো ও ব্র্যান্ড-রঙের ব্যাকগ্রাউন্ড-সহ,
+   যেন এটা ইচ্ছাকৃতভাবে ডিজাইন করা প্রফেশনাল অ্যাপ্লিকেশন মনে হয়। মোবাইলে
+   (≤৬৪০px) এই ব্লকের কোনো প্রভাব নেই — সবকিছু আগের মতোই থাকে।
+   ══════════════════════════════════════════════════════════════════════════ */
+@media (min-width: 641px){
+  html{
+    min-height:100vh;
+    background:
+      radial-gradient(ellipse 1000px 700px at 12% 0%, rgba(47,158,130,0.10), transparent 55%),
+      radial-gradient(ellipse 900px 700px at 100% 100%, rgba(201,168,76,0.12), transparent 55%),
+      #e9e4d6;
+  }
+  body{
+    max-width:460px !important;
+    margin:0 auto !important;
+    min-height:100vh;
+    box-shadow:0 0 0 1px rgba(36,49,59,0.07), 0 24px 70px rgba(24,30,20,0.28);
+    overflow-x:hidden;
+  }
+
+  /* ভিউপোর্ট-স্প্যানিং fixed উপাদান (বটম নেভ, আপডেট/ইনস্টল ব্যানার) — কেন্দ্রীভূত ফ্রেমের সাথে align করা,
+     নাহলে এগুলো পুরো ব্রাউজার-প্রস্থ জুড়ে থাকত অথচ বাকি কন্টেন্ট কেন্দ্রে সংকুচিত থাকত */
+  .bottom-nav, #swUpdateBanner, #pwaInstallBanner{
+    left:50% !important;
+    right:auto !important;
+    transform:translateX(-50%) !important;
+    width:100% !important;
+    max-width:460px !important;
+  }
+
+  /* লগইন পেজের বড় ডেকোরেটিভ বৃত্তগুলো যেন ফ্রেমের বাইরে দৃষ্টিকটুভাবে না ছড়ায় */
+  #page-login{ overflow:hidden; }
+}
+</style>
 </body>
 </html>
 
