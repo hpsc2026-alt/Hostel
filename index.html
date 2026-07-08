@@ -2727,7 +2727,7 @@ function ogStreakDays(complianceLog){
 function ogIsViewOnlyUser(){
   const raw = localStorage.getItem('hms_user');
   const u = raw ? JSON.parse(raw) : {};
-  return u.role === 'asst';
+  return u.role === 'asst' || u.role === 'arabic';
 }
 
 function ogGetComplaints(){
@@ -6247,6 +6247,13 @@ function bhLoadHistoryFromFirebase(){
     bhRecords = merged;
     bhNextId = Math.max(bhNextId, ...merged.map(r=>typeof r.id==="number"?r.id:0), 0)+1;
     if(document.getElementById('page-behaviour')?.classList.contains('active')) bhRender();
+    // নতুন অভিযোগ/আচরণ রেকর্ড সিঙ্ক হলে অভিযোগ কেন্দ্র পেজ খোলা থাকলে সেটাও সাথে সাথে রিফ্রেশ হবে
+    if(document.getElementById('page-complaint-center')?.classList.contains('active') && typeof ogRender==='function') ogRender();
+    // ড্যাশবোর্ডে থাকলে "অভিযোগ" রিমাইন্ডার ব্যানারও সাথে সাথে আপডেট হবে
+    if(document.getElementById('page-dashboard')?.classList.contains('active') && typeof ogRenderReminder==='function'){
+      const su = getSessionUser();
+      ogRenderReminder(su);
+    }
   });
 }
 const bnPts=n=>String(n).replace(/\d/g,x=>"০১২৩৪৫৬৭৮৯"[x]);
