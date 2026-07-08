@@ -1238,6 +1238,7 @@ function effectiveUsers(role){
 <div id="dash-block-cards" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px 14px;"></div>
 <div id="dash-rank-widget" style="margin:0 16px 14px;"></div>
 <div id="dash-noncompliance-widget"></div>
+<div id="dash-suggestions-widget"></div>
 
 <!-- স্ট্যাটিস্টিক্স -->
 <div class="section-header">📊 সামগ্রিক অবস্থা</div>
@@ -2003,11 +2004,11 @@ function getSessionUser(){
 }
 
 function isTimeGateOpen(startH,startM,endH,endM){
-  const user = getSessionUser();
-  if(user.role==='admin' || user.role==='super') return true; // অ্যাডমিন/সুপার সার্বক্ষণিক ইনপুট দিতে পারবেন
-  const now = new Date();
-  const cur = now.getHours()*60+now.getMinutes();
-  return cur >= (startH*60+startM) && cur <= (endH*60+endM);
+  // ── সময়ভিত্তিক (ঘণ্টা-উইন্ডো) সীমা তুলে দেওয়া হয়েছে ──
+  // এখন থেকে হাউজ টিউটর/আরবি শিক্ষকসহ সবাই সারাদিন যেকোনো সময় তথ্য ইনপুট দিতে পারবেন,
+  // শুধু শর্ত হলো সেটি "আজকের তারিখ"-এর মধ্যেই হতে হবে (যা fbTodayKey() দিয়ে স্বয়ংক্রিয়ভাবে
+  // নিশ্চিত হয়, কারণ প্রতিটি রিপোর্ট সবসময় আজকের ক্যালেন্ডার-কী-তেই সংরক্ষিত হয়)।
+  return true;
 }
 
 function timeGateLabel(startH,startM,endH,endM){
@@ -5393,6 +5394,7 @@ function renderDashboard(){
   renderDashBlockCards();
   if(typeof rkRenderDashWidget==='function') rkRenderDashWidget();
   if(typeof ncRenderDashWidget==='function') ncRenderDashWidget();
+  if(typeof sgRenderDashWidget==='function') sgRenderDashWidget();
   // পরিচ্ছন্নতা ও সকালের পড়া রিপোর্ট
   renderCleanlinessDashReport(user);
   // অসুস্থতা ও ক্লাস ফাঁকি রিপোর্ট
@@ -6068,6 +6070,10 @@ function submitChecklist(){
   <button class="bh-add-btn" onclick="bhToggleForm()">➕ নতুন আচরণ রিপোর্ট করুন</button>
   <div class="bh-form" id="bh-form">
     <div class="bh-form-title" id="bh-form-title">📝 আচরণ রিপোর্ট</div>
+    <div id="bh-complaint-toggle-row" onclick="bhToggleComplaintCheckbox()" style="display:flex;align-items:center;gap:9px;padding:11px 12px;background:#fdf3f3;border:1.5px solid #f0caca;border-radius:10px;margin-bottom:12px;cursor:pointer;">
+      <div id="bh-complaint-check" style="font-size:18px;line-height:1;">☐</div>
+      <div style="font-size:12px;color:#24313b;flex:1;line-height:1.4;">🚨 এটি <b>অভিযোগ</b> হিসেবে জমা দিন — চেক করা থাকলে এটি "অভিযোগ কেন্দ্রে" দেখাবে এবং হোস্টেল সুপার/অ্যাডমিন সমাধান না করা পর্যন্ত সেখানে থাকবে</div>
+    </div>
     <select class="bh-inp" id="bh-stu-select"><option value="">— ছাত্র নির্বাচন করুন —</option></select>
     <select class="bh-inp" id="bh-cat-select" onchange="bhCatChange()">
       <option value="">— ঘটনার ধরন —</option>
@@ -6258,8 +6264,23 @@ function goFileComplaint(){
   bhRender();
   showPage("behaviour");
   document.getElementById("bh-form").classList.add("show");
-  document.getElementById("bh-form-title").textContent = "🚨 অভিযোগ দিন";
+  bhUpdateComplaintCheckboxUI();
   bhSelectPts("minus");
+}
+
+// ফর্মে দৃশ্যমান "🚨 এটি অভিযোগ" চেকবক্সে ট্যাপ করলে — এখন থেকে এই অবস্থাটাই দৃশ্যমান ও
+// ব্যবহারকারীর নিয়ন্ত্রণে থাকে, তাই কোনো লুকানো অবস্থা ভুলবশত হারিয়ে যাওয়ার সুযোগ নেই।
+function bhToggleComplaintCheckbox(){
+  bhComplaintMode = !bhComplaintMode;
+  bhUpdateComplaintCheckboxUI();
+}
+function bhUpdateComplaintCheckboxUI(){
+  const box = document.getElementById('bh-complaint-check');
+  const row = document.getElementById('bh-complaint-toggle-row');
+  const title = document.getElementById('bh-form-title');
+  if(box) box.textContent = bhComplaintMode ? '☑️' : '☐';
+  if(row) row.style.borderColor = bhComplaintMode ? '#c94545' : '#f0caca';
+  if(title) title.textContent = bhComplaintMode ? '🚨 অভিযোগ দিন' : '📝 আচরণ রিপোর্ট';
 }
 
 function bhPopulateStudents(){
@@ -6284,8 +6305,7 @@ function bhPopulateStudents(){
 }
 
 function bhToggleForm(){
-  bhComplaintMode = false;
-  document.getElementById("bh-form-title").textContent = "📝 আচরণ রিপোর্ট";
+  bhUpdateComplaintCheckboxUI();
   document.getElementById("bh-form").classList.toggle("show");
 }
 
@@ -6333,9 +6353,9 @@ function bhSave(){
   document.getElementById("bh-plus-btn").className="bh-pts-btn";
   const wasComplaint = bhComplaintMode;
   bhComplaintMode = false;
-  document.getElementById("bh-form-title").textContent = "📝 আচরণ রিপোর্ট";
+  bhUpdateComplaintCheckboxUI();
   bhRender();
-  bhShowToast(wasComplaint ? "✅ অভিযোগ জমা হয়েছে!" : "✅ রিপোর্ট সংরক্ষিত হয়েছে!","success");
+  bhShowToast(wasComplaint ? "✅ অভিযোগ জমা হয়েছে! এটি এখন \"অভিযোগ কেন্দ্রে\" দেখাবে।" : "✅ রিপোর্ট সংরক্ষিত হয়েছে!","success");
 }
 
 function bhFilter(f,el){
@@ -10771,13 +10791,49 @@ async function ncBuildTodayIssues(){
 
 function goNonCompliance(){ ncRender(); showPage('noncompliance'); }
 
-// dismiss/ongoing বিবেচনা করে চূড়ান্ত দৃশ্যমান তালিকা বানানো (পেজ ও ড্যাশবোর্ড উইজেট — দুই জায়গাতেই ব্যবহৃত)
+// আজকের সময় "HH:MM AM/PM" (বাংলা সংখ্যায়) ফরম্যাটে — কোনো ত্রুটি প্রথম শনাক্ত হওয়ার সময় রেকর্ড করতে ব্যবহৃত
+function ncClockBn(){
+  const d = new Date();
+  let h = d.getHours(); const ap = h>=12?'PM':'AM'; h = h%12; if(h===0) h=12;
+  const m = String(d.getMinutes()).padStart(2,'0');
+  return bnNC(h)+':'+bnNC(m)+' '+ap;
+}
+
+// dismiss/ongoing/flagged বিবেচনা করে চূড়ান্ত দৃশ্যমান তালিকা বানানো (পেজ ও ড্যাশবোর্ড উইজেট — দুই জায়গাতেই ব্যবহৃত)
+// ── স্থায়ী ("flagged") ট্র্যাকিং ──: কোনো ছাত্রের নাম একবার এই তালিকায় এলে, হোস্টেল সুপার/অ্যাডমিন
+// "✅ ব্যবস্থা নেওয়া হয়েছে" চেপে সমাধান না করা পর্যন্ত সে তার মূল তারিখ ও সময়সহ পরের দিনগুলোতেও
+// এখানে দেখাতে থাকবে — নতুন দিন শুরু হলে স্বয়ংক্রিয়ভাবে মুছে যাবে না।
 async function ncGetVisibleRows(){
   const todayKey = hostelCycleKeys().endKey;
   ncCleanupExpiredOngoing(todayKey);
 
-  let rows = await ncBuildTodayIssues();
-  rows = rows.filter(r => !(ncActions[r.serial] && ncActions[r.serial].dismiss && ncActions[r.serial].dismiss[todayKey]));
+  const freshRows = await ncBuildTodayIssues(); // আজকের র-ডেটা থেকে সদ্য শনাক্ত ইস্যু
+
+  freshRows.forEach(r=>{
+    const serial = r.serial;
+    const rec = ncActions[serial] || {};
+    if(!rec.flagged){
+      rec.flagged = { dateKey: todayKey, dateBn: ncFmtDateBn(todayKey), time: ncClockBn(), issues: r.issues.map(i=>({key:i.key,label:i.label})) };
+      ncActions[serial] = rec;
+      fbSet('ncTaskActions/'+serial, rec);
+    } else {
+      // পুরনো ফ্ল্যাগড রেকর্ড থাকলে তারিখ/সময় অপরিবর্তিত রেখে শুধু নতুন ইস্যু (থাকলে) যোগ করা হয়
+      const known = new Set(rec.flagged.issues.map(i=>i.key));
+      let changed = false;
+      r.issues.forEach(i=>{ if(!known.has(i.key)){ rec.flagged.issues.push({key:i.key,label:i.label}); known.add(i.key); changed=true; } });
+      if(changed){ ncActions[serial] = rec; fbSet('ncTaskActions/'+serial, rec); }
+    }
+  });
+
+  let rows = Object.keys(ncActions).map(serial=>{
+    const rec = ncActions[serial];
+    if(!rec || !rec.flagged) return null;
+    const stu = allStudents.find(s=>String(s.serial)===String(serial));
+    if(!stu) return null;
+    return {...stu, issues: rec.flagged.issues, flaggedAt: {dateKey: rec.flagged.dateKey, dateBn: rec.flagged.dateBn, time: rec.flagged.time}};
+  }).filter(Boolean);
+
+  rows.sort((a,b)=> b.issues.length-a.issues.length);
 
   Object.keys(ncActions).forEach(serial=>{
     const rec = ncActions[serial];
@@ -10949,6 +11005,7 @@ async function ncRender(forceHistory){
         <div class="nc-row-name">
           <div class="nc-row-name-txt">${s.name}</div>
           <div class="nc-row-meta">${CLASS_BN[s.cls]} • রুম ${s.room}</div>
+          ${s.flaggedAt?`<div style="font-size:10px;font-weight:700;margin-top:3px;color:${s.flaggedAt.dateKey!==cycle.endKey?'#c94545':'#a9822f'}">🗓️ ${s.flaggedAt.dateBn}, ${s.flaggedAt.time} থেকে অসমাধিত${s.flaggedAt.dateKey!==cycle.endKey?' (আগের দিনের)':''}</div>`:''}
           ${s.issues.length>0?`<div class="nc-row-issues">${s.issues.map(t=>{
             const histDates = ncHistoryDatesFor(s.serial, t.key);
             const cnt = histDates.length;
@@ -10967,15 +11024,21 @@ async function ncRender(forceHistory){
   wrap.innerHTML = html;
 }
 
-// "ব্যবস্থা নেওয়া হয়েছে" — আজকের জন্য এই ছাত্রকে তালিকা থেকে বাদ দেওয়া
+// "ব্যবস্থা নেওয়া হয়েছে" — শুধুমাত্র হোস্টেল সুপার/অ্যাডমিন এই বাটনে চাপলেই ছাত্রের নাম
+// স্থায়ীভাবে তালিকা থেকে সরে যাবে (flagged রেকর্ড মুছে ফেলা হয়); এর আগ পর্যন্ত এটি
+// মূল তারিখ ও সময়সহ প্রতিদিন তালিকায় থেকে যাবে।
 function ncMarkHandled(serial){
   if(ncIsViewOnlyUser()) return;
-  const todayKey = hostelCycleKeys().endKey;
   const rec = ncActions[serial] || {};
-  rec.dismiss = rec.dismiss || {};
-  rec.dismiss[todayKey] = true;
+  const resolvedIssues = (rec.flagged && rec.flagged.issues) || [];
+  delete rec.flagged;
   ncActions[serial] = rec;
   fbSet('ncTaskActions/'+serial, rec);
+  // অডিট লগ — কে, কবে সমাধান করলেন
+  if(typeof fbPush==='function'){
+    const u = getSessionUser();
+    fbPush('ncResolvedLog', {serial, by:u.name||u.id||'', at:Date.now(), issues:resolvedIssues.map(i=>i.label)});
+  }
   ncRender();
 }
 function ncIsViewOnlyUser(){
@@ -13841,6 +13904,291 @@ async function htRenderStaffWidget(){
   #page-login{ overflow:hidden; }
 }
 </style>
+
+<!-- ══ PAGE: পরামর্শ ও চাহিদা — হাউজ টিউটর/আরবি শিক্ষক জমা দেন, সুপার-অ্যাডমিন সমাধান করেন ══ -->
+<style>
+.sg-hero{background:linear-gradient(135deg,#dbe9f7,#faf8f2);padding:16px;margin:14px 16px;border-radius:14px;border:1px solid #c6dcf0;}
+.sg-hero-title{font-size:14px;font-weight:700;color:#24313b;margin-bottom:3px;}
+.sg-hero-sub{font-size:11px;color:#2f6fa9;}
+.sg-add-btn{margin:0 16px 14px;display:block;width:calc(100% - 32px);padding:12px;background:linear-gradient(135deg,#2f6fa9,#4a8fc9);border:none;border-radius:11px;color:#faf8f2;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;}
+.sg-section-hd{margin:14px 16px 8px;font-size:12px;font-weight:700;color:#5c6f7a;}
+.sg-card{margin:0 16px 12px;background:#ffffff;border:1px solid #e2dbc7;border-radius:13px;padding:13px 14px;}
+.sg-card.resolved{opacity:.7;}
+.sg-card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+.sg-by{font-size:12px;font-weight:700;color:#24313b;}
+.sg-role{font-size:10px;color:#8b98a3;margin-top:1px;}
+.sg-time{font-size:10px;color:#8b98a3;white-space:nowrap;}
+.sg-text{font-size:13px;color:#34444f;margin-top:8px;line-height:1.5;white-space:pre-wrap;}
+.sg-resolution{margin-top:9px;background:#eef7ee;border:1px solid #cfe8cf;border-radius:9px;padding:8px 10px;font-size:11px;color:#2f7a45;}
+.sg-resolve-btn{margin-top:10px;padding:8px 14px;background:#eef7ee;border:1px solid #2f9e5c44;border-radius:9px;color:#2f7a45;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;}
+.sg-empty{padding:36px 16px;text-align:center;color:#5c6f7a;font-size:13px;}
+</style>
+
+<div id="page-suggestions" class="page" style="background:#faf8f2;min-height:100vh;padding-bottom:80px;">
+  <div class="topbar">
+    <div class="tb-back" onclick="goDashboard()">←</div>
+    <div class="tb-info"><div class="tb-title">💬 পরামর্শ ও চাহিদা</div><div class="tb-sub" id="sg-page-sub">লোড হচ্ছে...</div></div>
+  </div>
+
+  <div class="sg-hero">
+    <div class="sg-hero-title">💬 হাউজ টিউটর ও আরবি শিক্ষকদের পরামর্শ/চাহিদা</div>
+    <div class="sg-hero-sub">সবাই দেখতে পাবেন — হোস্টেল সুপার বা অ্যাডমিন সমাধান না করা পর্যন্ত এটি তালিকায় থেকে যাবে</div>
+  </div>
+
+  <button class="sg-add-btn" id="sg-add-btn" onclick="sgOpenAddModal()">✍️ নতুন পরামর্শ/চাহিদা লিখুন</button>
+
+  <div class="sg-section-hd">🟡 অসমাধিত (<span id="sg-open-count">০</span>)</div>
+  <div id="sg-open-list"></div>
+
+  <div class="sg-section-hd" style="cursor:pointer;" onclick="sgToggleResolved()">✅ সমাধানকৃত <span id="sg-resolved-toggle-lbl">দেখুন</span></div>
+  <div id="sg-resolved-list" class="hide"></div>
+
+  <div class="bottom-nav">
+    <div class="nav-item" onclick="goDashboard()"><div class="nav-icon">🏠</div><div class="nav-label">হোম</div></div>
+    <div class="nav-item" onclick="goStudents()"><div class="nav-icon">👨‍🎓</div><div class="nav-label">ছাত্র</div></div>
+    <div class="nav-item" onclick="goChecklist()"><div class="nav-icon">✅</div><div class="nav-label">চেকলিস্ট</div></div>
+    <div class="nav-item" onclick="goBehaviour()"><div class="nav-icon">⚖️</div><div class="nav-label">আচরণ</div></div>
+    <div class="nav-item" onclick="goAttendance()"><div class="nav-icon">🌙</div><div class="nav-label">হাজিরা</div></div>
+  </div>
+</div>
+
+<!-- নতুন পরামর্শ/চাহিদা যোগ করার শীট -->
+<div class="modal-overlay hide" id="sgAddOverlay" onclick="if(event.target===this) sgCloseAddModal()" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9000;align-items:flex-end;">
+  <div style="background:#ffffff;width:100%;border-radius:20px 20px 0 0;padding:20px;font-family:'Hind Siliguri',sans-serif;">
+    <div style="width:40px;height:4px;background:#e2dbc7;border-radius:2px;margin:0 auto 16px;"></div>
+    <div style="font-size:15px;font-weight:700;color:#24313b;margin-bottom:14px;">✍️ নতুন পরামর্শ/চাহিদা</div>
+    <textarea id="sg-add-text" rows="5" placeholder="আপনার পরামর্শ বা চাহিদা এখানে লিখুন..." style="width:100%;padding:10px;border:1px solid #e2dbc7;border-radius:9px;font-size:13px;font-family:inherit;box-sizing:border-box;resize:vertical;"></textarea>
+    <div style="display:flex;gap:8px;margin-top:14px;">
+      <button onclick="sgCloseAddModal()" style="flex:1;padding:12px;border-radius:10px;border:1px solid #e2dbc7;background:#ffffff;color:#5c6f7a;font-size:13px;font-weight:700;font-family:inherit;">বাতিল</button>
+      <button onclick="sgSubmit()" style="flex:1;padding:12px;border-radius:10px;border:none;background:#2f6fa9;color:#ffffff;font-size:13px;font-weight:700;font-family:inherit;">জমা দিন</button>
+    </div>
+  </div>
+</div>
+
+<!-- সমাধান নোট লেখার শীট (শুধু সুপার/অ্যাডমিন) -->
+<div class="modal-overlay hide" id="sgResolveOverlay" onclick="if(event.target===this) sgCloseResolveModal()" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9000;align-items:flex-end;">
+  <div style="background:#ffffff;width:100%;border-radius:20px 20px 0 0;padding:20px;font-family:'Hind Siliguri',sans-serif;">
+    <div style="width:40px;height:4px;background:#e2dbc7;border-radius:2px;margin:0 auto 16px;"></div>
+    <div style="font-size:15px;font-weight:700;color:#24313b;margin-bottom:14px;">✅ সমাধান হিসেবে চিহ্নিত করুন</div>
+    <textarea id="sg-resolve-note" rows="4" placeholder="কী ব্যবস্থা নেওয়া হয়েছে (ঐচ্ছিক)..." style="width:100%;padding:10px;border:1px solid #e2dbc7;border-radius:9px;font-size:13px;font-family:inherit;box-sizing:border-box;resize:vertical;"></textarea>
+    <div style="display:flex;gap:8px;margin-top:14px;">
+      <button onclick="sgCloseResolveModal()" style="flex:1;padding:12px;border-radius:10px;border:1px solid #e2dbc7;background:#ffffff;color:#5c6f7a;font-size:13px;font-weight:700;font-family:inherit;">বাতিল</button>
+      <button onclick="sgConfirmResolve()" style="flex:1;padding:12px;border-radius:10px;border:none;background:#2f9e5c;color:#ffffff;font-size:13px;font-weight:700;font-family:inherit;">সমাধান সম্পন্ন</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ══ পরামর্শ ও চাহিদা (Staff Suggestions) ══ */
+let sgItems = {};
+let sgLoaded = false;
+let sgShowResolved = false;
+let sgResolveTarget = null;
+
+function sgCanSubmit(){
+  const u = getSessionUser();
+  return u.role === 'asst' || u.role === 'arabic';
+}
+function sgCanResolve(){
+  const u = getSessionUser();
+  return u.role === 'super' || u.role === 'admin';
+}
+
+function sgLoad(){
+  if(sgLoaded) return; sgLoaded = true;
+  fbListen('staffSuggestions', data=>{
+    sgItems = data || {};
+    if(document.getElementById('page-suggestions')?.classList.contains('active')) sgRender();
+    if(typeof sgRenderDashWidget==='function') sgRenderDashWidget();
+  });
+}
+
+function goSuggestions(){
+  sgLoad();
+  sgRender();
+  showPage('suggestions');
+}
+
+function sgOpenAddModal(){
+  if(!sgCanSubmit()){ alert('শুধুমাত্র হাউজ টিউটর ও আরবি শিক্ষকগণ নতুন পরামর্শ/চাহিদা জমা দিতে পারবেন।'); return; }
+  document.getElementById('sg-add-text').value = '';
+  document.getElementById('sgAddOverlay').classList.remove('hide');
+}
+function sgCloseAddModal(){
+  document.getElementById('sgAddOverlay').classList.add('hide');
+}
+function sgSubmit(){
+  const text = document.getElementById('sg-add-text').value.trim();
+  if(!text){ alert('অনুগ্রহ করে পরামর্শ বা চাহিদা লিখুন।'); return; }
+  const u = getSessionUser();
+  const blk = (typeof ASST_BLOCK_MAP!=='undefined' && u.role==='asst') ? ASST_BLOCK_MAP[u.id] : null;
+  const rec = {
+    byId: u.id || '', byName: u.name || 'অজানা', byRole: u.role || '',
+    byRoleLabel: (typeof ROLE_LABELS!=='undefined' ? ROLE_LABELS[u.role] : (u.roleLabel||'')),
+    blk: blk || null, text,
+    createdAt: Date.now(),
+    dateBn: (typeof ncFmtDateBn==='function') ? ncFmtDateBn(fbTodayKey()) : '',
+    timeBn: (typeof ncClockBn==='function') ? ncClockBn() : '',
+    resolved: false,
+  };
+  fbPush('staffSuggestions', rec);
+  sgCloseAddModal();
+  alert('✅ আপনার পরামর্শ/চাহিদা জমা হয়েছে। হোস্টেল সুপার/অ্যাডমিন এটি দেখতে পাবেন।');
+}
+
+function sgOpenResolveModal(id){
+  if(!sgCanResolve()) return;
+  sgResolveTarget = id;
+  document.getElementById('sg-resolve-note').value = '';
+  document.getElementById('sgResolveOverlay').classList.remove('hide');
+}
+function sgCloseResolveModal(){
+  document.getElementById('sgResolveOverlay').classList.add('hide');
+  sgResolveTarget = null;
+}
+function sgConfirmResolve(){
+  if(!sgResolveTarget) return;
+  const note = document.getElementById('sg-resolve-note').value.trim();
+  const u = getSessionUser();
+  const rec = sgItems[sgResolveTarget] || {};
+  rec.resolved = true;
+  rec.resolvedBy = u.name || u.id || '';
+  rec.resolvedAt = Date.now();
+  rec.resolutionNote = note;
+  fbSet('staffSuggestions/'+sgResolveTarget, rec);
+  sgCloseResolveModal();
+}
+
+function sgToggleResolved(){
+  sgShowResolved = !sgShowResolved;
+  document.getElementById('sg-resolved-list').classList.toggle('hide', !sgShowResolved);
+  document.getElementById('sg-resolved-toggle-lbl').textContent = sgShowResolved ? 'লুকান' : 'দেখুন';
+  if(sgShowResolved) sgRender();
+}
+
+function sgEsc(s){ return String(s||'').replace(/</g,'&lt;'); }
+
+function sgCardHtml(id, r, resolved){
+  const canResolve = sgCanResolve();
+  return `<div class="sg-card${resolved?' resolved':''}">
+    <div class="sg-card-top">
+      <div>
+        <div class="sg-by">${sgEsc(r.byName)}${r.blk?' — ব্লক '+r.blk:''}</div>
+        <div class="sg-role">${sgEsc(r.byRoleLabel||r.byRole)}</div>
+      </div>
+      <div class="sg-time">🗓️ ${sgEsc(r.dateBn)}, ${sgEsc(r.timeBn)}</div>
+    </div>
+    <div class="sg-text">${sgEsc(r.text)}</div>
+    ${resolved ? `<div class="sg-resolution">✅ সমাধান করেছেন: ${sgEsc(r.resolvedBy)}${r.resolutionNote?' — '+sgEsc(r.resolutionNote):''}</div>` : (canResolve ? `<button class="sg-resolve-btn" onclick="sgOpenResolveModal('${id}')">✅ সমাধান হয়েছে</button>` : '')}
+  </div>`;
+}
+
+function sgRender(){
+  const u = getSessionUser();
+  document.getElementById('sg-page-sub').textContent = (typeof ROLE_LABELS!=='undefined' ? ROLE_LABELS[u.role] : '') + ' — সব পরামর্শ/চাহিদা';
+  document.getElementById('sg-add-btn').style.display = sgCanSubmit() ? 'block' : 'none';
+
+  const entries = Object.entries(sgItems).sort((a,b)=>(a[1].createdAt||0)-(b[1].createdAt||0));
+  const open = entries.filter(([,r])=>!r.resolved);
+  const resolved = entries.filter(([,r])=>r.resolved).sort((a,b)=>(b[1].resolvedAt||0)-(a[1].resolvedAt||0));
+
+  document.getElementById('sg-open-count').textContent = (typeof bnNC==='function') ? bnNC(open.length) : open.length;
+  const openWrap = document.getElementById('sg-open-list');
+  openWrap.innerHTML = open.length
+    ? open.map(([id,r])=>sgCardHtml(id,r,false)).join('')
+    : '<div class="sg-empty">🎉 কোনো অসমাধিত পরামর্শ/চাহিদা নেই।</div>';
+
+  const resWrap = document.getElementById('sg-resolved-list');
+  resWrap.innerHTML = resolved.length
+    ? resolved.map(([id,r])=>sgCardHtml(id,r,true)).join('')
+    : '<div class="sg-empty">এখনও কিছু সমাধান হয়নি।</div>';
+}
+
+// ড্যাশবোর্ডে ছোট উইজেট — সবাই দেখতে পাবেন
+function sgRenderDashWidget(){
+  const el = document.getElementById('dash-suggestions-widget');
+  if(!el) return;
+  sgLoad();
+  const openCount = Object.values(sgItems).filter(r=>!r.resolved).length;
+  if(openCount===0){
+    el.innerHTML = `<div class="nc-widget" style="border-color:#c6dcf0;" onclick="goSuggestions()">
+      <div class="nc-widget-top"><span style="font-size:16px;">💬</span><span class="nc-widget-title">পরামর্শ ও চাহিদা</span></div>
+      <div class="nc-widget-sub">এই মুহূর্তে কোনো অসমাধিত পরামর্শ/চাহিদা নেই।</div>
+    </div>`;
+    return;
+  }
+  el.innerHTML = `<div class="nc-widget" style="border-color:#c6dcf0;" onclick="goSuggestions()">
+    <div class="nc-widget-top">
+      <span style="font-size:16px;">💬</span>
+      <span class="nc-widget-title">পরামর্শ ও চাহিদা</span>
+      <span class="nc-widget-badge" style="background:#2f6fa9;">${(typeof bnNC==='function')?bnNC(openCount):openCount}</span>
+    </div>
+    <div class="nc-widget-sub">হাউজ টিউটর/আরবি শিক্ষকদের অসমাধিত পরামর্শ/চাহিদা — দেখতে ট্যাপ করুন</div>
+  </div>`;
+}
+</script>
+
+<script>
+/* ══ মোবাইল ব্যাক বাটন/জেসচার হ্যান্ডলিং ══
+   এতদিন অ্যাপের ভিতরে কোনো পেজে থাকা অবস্থায় মোবাইলের ব্যাক বাটন/জেসচার চাপলে ব্রাউজার
+   হিস্টোরিতে কোনো স্টেট না থাকায় সরাসরি অ্যাপ থেকে বের হয়ে যেত। এখন থেকে প্রতিটি পেজ
+   পরিবর্তনের সময় একটি হিস্টোরি-স্টেট যোগ হবে, আর ব্যাক চাপলে প্রথমে অ্যাপের ভিতরের
+   আগের পেজে (বা ড্যাশবোর্ডে) যাবে — একদম মূল (ড্যাশবোর্ড/লগইন) পেজে থাকলে তবেই আসলে
+   বের হওয়ার সুযোগ দেওয়া হবে (এবং তার আগে একবার সতর্ক-বার্তা দেখানো হবে)। */
+(function(){
+  const rootPages = ['dashboard','login'];
+  const _origShowPage = showPage;
+
+  function hmsCurrentPageId(){
+    const el = document.querySelector('.page.active');
+    return el ? el.id.replace('page-','') : null;
+  }
+
+  showPage = function(id, addHistory){
+    _origShowPage(id);
+    if(addHistory !== false){
+      try{ history.pushState({hmsPage:id}, '', '#'+id); }catch(e){}
+    }
+  };
+
+  let exitArmed = false, exitTimer = null;
+  function showExitToast(){
+    let t = document.getElementById('hmsExitToast');
+    if(!t){
+      t = document.createElement('div');
+      t.id = 'hmsExitToast';
+      t.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#24313bdd;color:#faf8f2;padding:10px 18px;border-radius:20px;font-size:12px;font-family:"Hind Siliguri",sans-serif;z-index:99999;transition:opacity .3s;pointer-events:none;';
+      document.body.appendChild(t);
+    }
+    t.textContent = '↩️ অ্যাপ থেকে বের হতে আবার ব্যাক চাপুন';
+    t.style.opacity = '1';
+    clearTimeout(t._hideTimer);
+    t._hideTimer = setTimeout(()=>{ t.style.opacity='0'; }, 1800);
+  }
+
+  window.addEventListener('popstate', function(e){
+    const target = (e.state && e.state.hmsPage) ? e.state.hmsPage : null;
+    if(target){
+      _origShowPage(target);
+      return;
+    }
+    const cur = hmsCurrentPageId();
+    if(!cur || rootPages.includes(cur)){
+      if(exitArmed) return; // দ্বিতীয়বার ব্যাক চাপলে স্বাভাবিকভাবে বের হতে দেওয়া হবে
+      exitArmed = true;
+      showExitToast();
+      try{ history.pushState({hmsPage: cur || 'dashboard'}, '', '#'+(cur||'dashboard')); }catch(err){}
+      clearTimeout(exitTimer);
+      exitTimer = setTimeout(()=>{ exitArmed = false; }, 2000);
+    } else {
+      _origShowPage('dashboard');
+      try{ history.pushState({hmsPage:'dashboard'}, '', '#dashboard'); }catch(err){}
+    }
+  });
+
+  try{ history.replaceState({hmsPage: hmsCurrentPageId() || 'login'}, '', location.pathname); }catch(e){}
+})();
+</script>
 
 </body>
 </html>
