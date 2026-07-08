@@ -2003,19 +2003,6 @@ function getSessionUser(){
   return raw ? JSON.parse(raw) : {role:'super', id:'', name:'অজানা'};
 }
 
-function isTimeGateOpen(startH,startM,endH,endM){
-  // ── সময়ভিত্তিক (ঘণ্টা-উইন্ডো) সীমা তুলে দেওয়া হয়েছে ──
-  // এখন থেকে হাউজ টিউটর/আরবি শিক্ষকসহ সবাই সারাদিন যেকোনো সময় তথ্য ইনপুট দিতে পারবেন,
-  // শুধু শর্ত হলো সেটি "আজকের তারিখ"-এর মধ্যেই হতে হবে (যা fbTodayKey() দিয়ে স্বয়ংক্রিয়ভাবে
-  // নিশ্চিত হয়, কারণ প্রতিটি রিপোর্ট সবসময় আজকের ক্যালেন্ডার-কী-তেই সংরক্ষিত হয়)।
-  return true;
-}
-
-function timeGateLabel(startH,startM,endH,endM){
-  const p=n=>String(n).padStart(2,'0');
-  return p(startH)+':'+p(startM)+' - '+p(endH)+':'+p(endM);
-}
-
 let dailyStaffPerfLogged = {};
 function nudgeStaffKpi(taskId, blk, kpiField){
   if(!blk) return; // অ্যাডমিন/সুপার সব ব্লক একসাথে দেখলে নির্দিষ্ট স্টাফ নির্ধারণ করা যায় না
@@ -2118,6 +2105,37 @@ function nudgeStaffKpi(taskId, blk, kpiField){
   </div>
 </div>
 <div class="ns-toast" id="uf-toast"></div>
+
+<!-- ══ PAGE: ডাইনিং তদারকি — সকালের নাস্তা ══ -->
+<div id="page-dining-breakfast" class="page" style="background:#faf8f2;min-height:100vh;padding-bottom:80px;">
+  <div class="topbar">
+    <div class="tb-back" onclick="goDashboard()">←</div>
+    <div class="tb-info"><div class="tb-title" id="db-page-title">ডাইনিং তদারকি — সকালের নাস্তা</div><div class="tb-sub" id="db-page-sub">লোড হচ্ছে...</div></div>
+    <div class="tb-action" style="background:#faf8f2;border:1px solid #e2dbc7;border-radius:10px;font-size:15px;" onclick="dbShowReport()">📊</div>
+  </div>
+
+  <div class="ns-hero">
+    <div style="font-size:13px;font-weight:700;color:#24313b;">📋 আজকের রিপোর্ট</div>
+    <div class="ns-stat-row">
+      <div class="ns-stat"><div class="ns-stat-num" style="color:#2f9e5c" id="db-stat-eaten">০</div><div class="ns-stat-lbl">নাস্তা করেছে</div></div>
+      <div class="ns-stat"><div class="ns-stat-num" style="color:#c94545" id="db-stat-not-eaten">০</div><div class="ns-stat-lbl">নাস্তা করেনি</div></div>
+    </div>
+  </div>
+
+  <div class="section-header">👨‍🎓 সব ছাত্র — টিকচিহ্ন দিয়ে নির্ধারণ করুন</div>
+  <div id="db-list"></div>
+
+  <div style="height:20px;"></div>
+
+  <div class="bottom-nav">
+    <div class="nav-item" onclick="goDashboard()"><div class="nav-icon">🏠</div><div class="nav-label">হোম</div></div>
+    <div class="nav-item" onclick="goStudents()"><div class="nav-icon">👨‍🎓</div><div class="nav-label">ছাত্র</div></div>
+    <div class="nav-item" onclick="goChecklist()"><div class="nav-icon">✅</div><div class="nav-label">চেকলিস্ট</div></div>
+    <div class="nav-item" onclick="goBehaviour()"><div class="nav-icon">⚖️</div><div class="nav-label">আচরণ</div></div>
+    <div class="nav-item" onclick="goAttendance()"><div class="nav-icon">🌙</div><div class="nav-label">হাজিরা</div></div>
+  </div>
+</div>
+<div class="ns-toast" id="db-toast"></div>
 
 <div class="ns-overlay hide" id="asOptionsOverlay" onclick="if(event.target===this) asCloseOptions()">
   <div class="ns-sheet">
@@ -2976,10 +2994,6 @@ function ccSyncTodayForDashboard(){
 }
 
 function ccOpenOptions(){
-  if(!isTimeGateOpen(7,0,7,50)){
-    alert('⏰ এই রিপোর্ট শুধুমাত্র সকাল '+timeGateLabel(7,0,7,50)+'-এর মধ্যে জমা দেওয়া যাবে।\n(হোস্টেল সুপার বা অ্যাডমিন সার্বক্ষণিক জমা দিতে পারবেন।)');
-    return;
-  }
   ccSeedHistory();
   const {blk} = nsGetBlockStudents();
   document.getElementById('cc-page-title').textContent = 'পরিচ্ছন্নতা ও সকালের পড়া';
@@ -3129,10 +3143,6 @@ let ufMarks = {};
 let ufCurrentOption = null;
 
 function ufOpenOptions(){
-  if(!isTimeGateOpen(8,0,8,20)){
-    alert('⏰ এই রিপোর্ট শুধুমাত্র সকাল '+timeGateLabel(8,0,8,20)+'-এর মধ্যে জমা দেওয়া যাবে।\n(হোস্টেল সুপার বা অ্যাডমিন সার্বক্ষণিক জমা দিতে পারবেন।)');
-    return;
-  }
   ufOpenStudentList();
 }
 function ufCloseOptions(){ document.getElementById('ufOptionsOverlay').classList.add('hide'); }
@@ -3153,10 +3163,6 @@ function ufOpenStudentList(){
 }
 
 function ufToggle(serial, optKey){
-  if(!isTimeGateOpen(8,0,8,20)){
-    alert('⏰ এই রিপোর্ট শুধুমাত্র সকাল '+timeGateLabel(8,0,8,20)+'-এর মধ্যে জমা দেওয়া যাবে।');
-    return;
-  }
   const o = UF_OPTIONS[optKey];
   const turningOn = ufMarks[serial] !== optKey;
   ufMarks[serial] = turningOn ? optKey : undefined;
@@ -3240,6 +3246,123 @@ function ufShowReport(){
   alert(msg);
 }
 
+// ── ডাইনিং তদারকি — সকালের নাস্তা (uf প্যাটার্নে, প্রতিটি ছাত্রের জন্য আলাদা টিক) ──
+const DB_OPTIONS = {
+  eaten:     {label:'নাস্তা করেছে', ico:'✅', cls:'ns-badge-ontime', pts:1, ptype:'plus',  cat:'good',   desc:'সকালের নাস্তা করেছে।'},
+  not_eaten: {label:'নাস্তা করেনি', ico:'❌', cls:'ns-badge-qaza',   pts:1, ptype:'minus', cat:'dining', desc:'সকালের নাস্তা করেনি।'},
+};
+let dbMarks = {};
+let dbCurrentOption = null;
+
+function dbOpenOptions(){
+  dbOpenStudentList();
+}
+
+let dbUnsubscribe = null;
+function dbOpenStudentList(){
+  const {blk} = nsGetBlockStudents();
+  document.getElementById('db-page-title').textContent = 'ডাইনিং তদারকি — সকালের নাস্তা';
+  document.getElementById('db-page-sub').textContent = blk ? ('ব্লক '+blk+' — '+BLOCKS[blk].supervisor) : 'সকল ব্লক';
+  dbRenderList();
+  showPage('dining-breakfast');
+
+  if(dbUnsubscribe) dbUnsubscribe();
+  dbUnsubscribe = fbListen('diningBreakfast/'+fbTodayKey(), data=>{
+    dbMarks = data || {};
+    dbRenderList();
+  });
+}
+let dbDashUnsubscribe = null;
+function dbSyncTodayForDashboard(){
+  if(dbDashUnsubscribe) return;
+  dbDashUnsubscribe = fbListen('diningBreakfast/'+fbTodayKey(), data=>{
+    dbMarks = data || {};
+    if(document.getElementById('page-dashboard')?.classList.contains('active')) renderDashboard();
+  });
+}
+
+function dbToggle(serial, optKey){
+  const o = DB_OPTIONS[optKey];
+  const turningOn = dbMarks[serial] !== optKey;
+  dbMarks[serial] = turningOn ? optKey : undefined;
+  dbRenderList();
+
+  fbSet('diningBreakfast/'+fbTodayKey()+'/'+serial, dbMarks[serial] || null);
+
+  const {user, blk, students} = nsGetBlockStudents();
+  const stu = students.find(s=>s.serial===serial) || allStudents.find(s=>s.serial===serial);
+  if(stu) dbToast(stu.name+' — '+(turningOn?o.label:'বাতিল করা হয়েছে'));
+
+  if(turningOn && stu && typeof bhRecords!=='undefined'){
+    const rec = {id:bhNextId++, stuName:stu.name.toUpperCase(), cls:stu.cls, blk:(stu.block||stu.blk), cat:o.cat, desc:o.desc, type:o.ptype, pts:o.pts, time:'এইমাত্র', by:user.name, ts:Date.now()};
+    bhRecords.unshift(rec);
+    fbPush('behaviorRecords', rec);
+  }
+  if(turningOn) nudgeStaffKpi('dining-breakfast', (stu?(stu.block||stu.blk):blk), 'checklist');
+}
+
+function dbToast(msg){
+  const t = document.getElementById('db-toast');
+  t.textContent = '✅ '+msg;
+  t.classList.add('show');
+  clearTimeout(window._dbToastTimer);
+  window._dbToastTimer = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+function dbCheckChip(s, optKey){
+  const o = DB_OPTIONS[optKey];
+  const isChecked = dbMarks[s.serial] === optKey;
+  return `<div class="cc-check ${isChecked?'checked':''} ${o.ptype==='minus'?'negative':''}" onclick="dbToggle(${s.serial},'${optKey}')">
+    <span class="cc-box">${isChecked?'✓':''}</span>${o.ico} ${o.label}
+  </div>`;
+}
+function dbRenderRows(students){
+  return students.map(s=>{
+    return `<div class="cc-row">
+      <div class="cc-row-name">${s.name}</div>
+      <div class="cc-row-cls">${CLASS_BN[s.cls]} শ্রেণী • রুম ${s.room}</div>
+      <div class="cc-check-grid">
+        ${dbCheckChip(s,'eaten')}${dbCheckChip(s,'not_eaten')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function dbRenderList(){
+  const {blk, students} = nsGetBlockStudents();
+  const bnN = n=>String(n).replace(/\d/g,x=>"০১২৩৪৫৬৭৮৯"[x]);
+  let counts = {eaten:0, not_eaten:0};
+  students.forEach(s=>{ const m=dbMarks[s.serial]; if(m) counts[m]++; });
+  document.getElementById('db-stat-eaten').textContent = bnN(counts.eaten);
+  document.getElementById('db-stat-not-eaten').textContent = bnN(counts.not_eaten);
+
+  let html = '';
+  if(blk){
+    html += `<div class="ns-list-wrap">`+dbRenderRows(students)+`</div>`;
+  } else {
+    ['A','B','C','D'].forEach(bk=>{
+      const studs = students.filter(s=>(s.block||s.blk)===bk);
+      if(!studs.length) return;
+      html += `<div class="ns-block-hd">ব্লক ${bk} — ${BLOCKS[bk].supervisor}</div>`;
+      html += `<div class="ns-list-wrap">`+dbRenderRows(studs)+`</div>`;
+    });
+  }
+  document.getElementById('db-list').innerHTML = html;
+}
+
+function dbShowReport(){
+  const {students} = nsGetBlockStudents();
+  const grouped = {eaten:[], not_eaten:[]};
+  students.forEach(s=>{
+    const m = dbMarks[s.serial];
+    if(m) grouped[m].push(s.name);
+  });
+  let msg = 'ডাইনিং তদারকি — সকালের নাস্তা রিপোর্ট:\n\n';
+  msg += '✅ নাস্তা করেছে ('+grouped.eaten.length+'): '+(grouped.eaten.join(', ')||'—')+'\n\n';
+  msg += '❌ নাস্তা করেনি ('+grouped.not_eaten.length+'): '+(grouped.not_eaten.join(', ')||'—');
+  alert(msg);
+}
+
 // ── দুপুরের পড়া ও বিশ্রাম (২:৩০-৫:০০) — একক-নির্বাচন তালিকা (uf প্যাটার্নে) ──
 const AS_OPTIONS = {
   studied: {label:'পড়েছে',    ico:'📖', cls:'ns-badge-ontime', pts:1, ptype:'plus', cat:'good',  desc:'দুপুরের বিরতিতে পড়াশোনা করেছে।'},
@@ -3251,10 +3374,6 @@ let asCurrentOption = null;
 let asUnsubscribe = null;
 
 function asOpenOptions(){
-  if(!isTimeGateOpen(14,30,17,0)){
-    alert('⏰ এই রিপোর্ট শুধুমাত্র বিকেল '+timeGateLabel(14,30,17,0)+'-এর মধ্যে জমা দেওয়া যাবে।\n(হোস্টেল সুপার বা অ্যাডমিন সার্বক্ষণিক জমা দিতে পারবেন।)');
-    return;
-  }
   asOpenStudentList();
 }
 function asCloseOptions(){ document.getElementById('asOptionsOverlay').classList.add('hide'); }
@@ -3274,10 +3393,6 @@ function asOpenStudentList(){
 }
 
 function asToggle(serial, optKey){
-  if(!isTimeGateOpen(14,30,17,0)){
-    alert('⏰ এই রিপোর্ট শুধুমাত্র বিকেল '+timeGateLabel(14,30,17,0)+'-এর মধ্যে জমা দেওয়া যাবে।');
-    return;
-  }
   const o = AS_OPTIONS[optKey];
   const turningOn = asMarks[serial] !== optKey;
   asMarks[serial] = turningOn ? optKey : undefined;
@@ -3372,10 +3487,6 @@ let zlMarks = {};      // { serial: {prayer:'jamaat'|'no_jamaat'|'absent_zl', lu
 let zlFinalized = false;
 
 function zlOpenOptions(){
-  if(!isTimeGateOpen(13,20,14,30)){
-    alert('⏰ এই রিপোর্ট শুধুমাত্র দুপুর '+timeGateLabel(13,20,14,30)+'-এর মধ্যে জমা/এডিট করা যাবে।\n(হোস্টেল সুপার বা অ্যাডমিন সার্বক্ষণিক জমা দিতে পারবেন।)');
-    return;
-  }
   const {blk} = nsGetBlockStudents();
   document.getElementById('zl-page-title').textContent = 'জোহর নামাজ ও দুপুরের খাবার';
   document.getElementById('zl-page-sub').textContent = blk ? ('ব্লক '+blk+' — '+BLOCKS[blk].supervisor) : 'সকল ব্লক';
@@ -3399,10 +3510,6 @@ function zlSyncTodayForDashboard(){
 }
 
 function zlToggle(serial, optKey){
-  if(!isTimeGateOpen(13,20,14,30)){
-    alert('⏰ এই রিপোর্ট শুধুমাত্র দুপুর '+timeGateLabel(13,20,14,30)+'-এর মধ্যে জমা/এডিট করা যাবে।');
-    return;
-  }
   const o = ZL_META[optKey];
   if(!zlMarks[serial]) zlMarks[serial] = {};
   const current = zlMarks[serial][o.group];
@@ -3533,10 +3640,6 @@ let esCurrentOption = null;
 let esUnsubscribe = null;
 
 function esOpenOptions(){
-  if(!isTimeGateOpen(18,0,23,59)){
-    alert('⏰ এই রিপোর্ট শুধুমাত্র সন্ধ্যা '+timeGateLabel(18,0,23,59)+' (রাত ১২টার মধ্যে) জমা দেওয়া যাবে।\n(হোস্টেল সুপার বা অ্যাডমিন সার্বক্ষণিক জমা দিতে পারবেন।)');
-    return;
-  }
   esOpenStudentList();
 }
 function esCloseOptions(){ document.getElementById('esOptionsOverlay').classList.add('hide'); }
@@ -3554,10 +3657,6 @@ function esOpenStudentList(){
   });
 }
 function esToggle(serial, optKey){
-  if(!isTimeGateOpen(18,0,23,59)){
-    alert('⏰ এই রিপোর্ট শুধুমাত্র সন্ধ্যা '+timeGateLabel(18,0,23,59)+' (রাত ১২টার মধ্যে) জমা দেওয়া যাবে।');
-    return;
-  }
   const o = ES_OPTIONS[optKey];
   const turningOn = esMarks[serial] !== optKey;
   esMarks[serial] = turningOn ? optKey : undefined;
@@ -3646,10 +3745,6 @@ let idUnsubscribe = null;
 let idDashUnsubscribe = null;
 
 function idOpenOptions(){
-  if(!isTimeGateOpen(20,0,22,0)){
-    alert('⏰ এই রিপোর্ট শুধুমাত্র রাত '+timeGateLabel(20,0,22,0)+'-এর মধ্যে জমা/এডিট করা যাবে।\n(হোস্টেল সুপার বা অ্যাডমিন সার্বক্ষণিক জমা দিতে পারবেন।)');
-    return;
-  }
   const {blk} = nsGetBlockStudents();
   document.getElementById('id-page-title').textContent = 'এশা নামাজ ও রাতের খাবার';
   document.getElementById('id-page-sub').textContent = blk ? ('ব্লক '+blk+' — '+BLOCKS[blk].supervisor) : 'সকল ব্লক';
@@ -3670,10 +3765,6 @@ function idSyncTodayForDashboard(){
   });
 }
 function idToggle(serial, optKey){
-  if(!isTimeGateOpen(20,0,22,0)){
-    alert('⏰ এই রিপোর্ট শুধুমাত্র রাত '+timeGateLabel(20,0,22,0)+'-এর মধ্যে জমা/এডিট করা যাবে।');
-    return;
-  }
   const o = ID_META[optKey];
   if(!idMarks[serial]) idMarks[serial] = {};
   const current = idMarks[serial][o.group];
@@ -3796,10 +3887,6 @@ let nrMarks = {}; // { serial: {read:true, slept:true, notslept:true, notread:tr
 let nrUnsubscribe = null;
 
 function nrOpenOptions(){
-  if(!isTimeGateOpen(21,0,23,59)){
-    alert('⏰ এই রিপোর্ট শুধুমাত্র রাত '+timeGateLabel(21,0,23,59)+'-এর মধ্যে জমা দেওয়া যাবে।\n(হোস্টেল সুপার বা অ্যাডমিন সার্বক্ষণিক জমা দিতে পারবেন।)');
-    return;
-  }
   const {blk} = nsGetBlockStudents();
   document.getElementById('nr-page-title').textContent = 'রাতের পড়া ও বিশ্রাম';
   document.getElementById('nr-page-sub').textContent = blk ? ('ব্লক '+blk+' — '+BLOCKS[blk].supervisor) : 'সকল ব্লক';
@@ -3813,10 +3900,6 @@ function nrOpenOptions(){
   });
 }
 function nrToggle(serial, optKey){
-  if(!isTimeGateOpen(21,0,23,59)){
-    alert('⏰ এই রিপোর্ট শুধুমাত্র রাত '+timeGateLabel(21,0,23,59)+'-এর মধ্যে জমা দেওয়া যাবে।');
-    return;
-  }
   const o = NR_META[optKey];
   if(!nrMarks[serial]) nrMarks[serial] = {};
   const turningOn = !nrMarks[serial][optKey];
@@ -4045,10 +4128,6 @@ function sfGetStatus(){
 }
 
 function sfOpenOptions(){
-  if(!isTimeGateOpen(13,0,15,0)){
-    alert('⏰ এই খোঁজখবর শুধুমাত্র দুপুর '+timeGateLabel(13,0,15,0)+'-এর মধ্যে জমা/এডিট করা যাবে।\n(হোস্টেল সুপার বা অ্যাডমিন সার্বক্ষণিক জমা দিতে পারবেন।)');
-    return;
-  }
   const {blk} = nsGetBlockStudents();
   document.getElementById('sf-page-title').textContent = 'অসুস্থ শিক্ষার্থীদের খোঁজখবর';
   document.getElementById('sf-page-sub').textContent = blk ? ('ব্লক '+blk+' — '+BLOCKS[blk].supervisor) : 'সকল ব্লক';
@@ -4063,10 +4142,6 @@ function sfOpenOptions(){
 }
 
 function sfToggleBool(serial, field){
-  if(!isTimeGateOpen(13,0,15,0)){
-    alert('⏰ এই খোঁজখবর শুধুমাত্র দুপুর '+timeGateLabel(13,0,15,0)+'-এর মধ্যে জমা/এডিট করা যাবে।');
-    return;
-  }
   if(!sfMarks[serial]) sfMarks[serial] = {};
   sfMarks[serial][field] = !sfMarks[serial][field];
   fbSet('sickFollowup/'+fbTodayKey()+'/'+serial, sfMarks[serial]);
@@ -4076,10 +4151,6 @@ function sfToggleBool(serial, field){
 }
 
 function sfSetCondition(serial, cond){
-  if(!isTimeGateOpen(13,0,15,0)){
-    alert('⏰ এই খোঁজখবর শুধুমাত্র দুপুর '+timeGateLabel(13,0,15,0)+'-এর মধ্যে জমা/এডিট করা যাবে।');
-    return;
-  }
   if(!sfMarks[serial]) sfMarks[serial] = {};
   const turningOn = sfMarks[serial].condition !== cond;
   sfMarks[serial].condition = turningOn ? cond : undefined;
@@ -4243,10 +4314,6 @@ function scGetStatus(){
 }
 
 function scOpenOptions(){
-  if(!isTimeGateOpen(8,40,9,30)){
-    alert('⏰ এই রিপোর্ট শুধুমাত্র সকাল '+timeGateLabel(8,40,9,30)+'-এর মধ্যে জমা দেওয়া যাবে।\n(হোস্টেল সুপার বা অ্যাডমিন সার্বক্ষণিক জমা দিতে পারবেন।)');
-    return;
-  }
   const {blk} = nsGetBlockStudents();
   document.getElementById('sc-page-sub').textContent = blk ? ('ব্লক '+blk+' — '+BLOCKS[blk].supervisor) : 'সকল ব্লক';
   scRenderList();
@@ -4535,11 +4602,16 @@ function scShowReport(){
 
 <script>
 /* ══ PAGE NAVIGATION ══ */
+let pageScrollPositions = {}; // প্রতিটি পেজ থেকে বের হওয়ার সময়ের স্ক্রল-পজিশন মনে রাখা হয়, যাতে ফিরে এলে ঠিক আগের জায়গায় দেখা যায়
 function showPage(id){
+  const prevActive = document.querySelector('.page.active');
+  if(prevActive){
+    pageScrollPositions[prevActive.id.replace('page-','')] = window.scrollY;
+  }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   const el = document.getElementById('page-' + id);
   if(el) el.classList.add('active');
-  window.scrollTo(0,0);
+  window.scrollTo(0, pageScrollPositions[id] || 0);
 }
 
 /* ══ LOGIN JS ══ */
@@ -4953,7 +5025,7 @@ const ROUTINE = [
   {time:'সকাল', icon:'🧹', text:'পরিচ্ছন্নতা ও সকালের পড়া', status:'pending', id:'cleanliness-study'},
   {time:'সকাল', icon:'👔', text:'ইউনিফর্ম পরে ক্লাসে যাওয়া', status:'pending', id:'uniform-class'},
   {time:'৮:৪০-৯:৩০', icon:'🏥', text:'অসুস্থতা ও ক্লাস ফাঁকি', status:'pending', id:'sick-classskip'},
-  {time:'দুপুর', icon:'🍽️', text:'ডাইনিং তদারকি — সকালের নাস্তা', status:'active'},
+  {time:'দুপুর', icon:'🍽️', text:'ডাইনিং তদারকি — সকালের নাস্তা', status:'pending', id:'dining-breakfast'},
   {time:'১:২০-২:৩০', icon:'🕌', text:'জোহর নামাজ ও দুপুরের খাবার', status:'pending', id:'zohr-lunch'},
   {time:'১:০০-৩:০০', icon:'🏥', text:'অসুস্থ শিক্ষার্থীদের খোঁজখবর', status:'pending', id:'sick-followup'},
   {time:'আসর', icon:'🕌', text:'আসর সালাত', status:'pending', id:'asr-namaz'},
@@ -5197,6 +5269,18 @@ function renderDashboard(){
     sfItem.status = sfGetStatus();
   }
 
+  // রুটিন — ডাইনিং তদারকি (সকালের নাস্তা) আইটেমের স্ট্যাটাস
+  const dbItem = ROUTINE.find(r=>r.id==='dining-breakfast');
+  if(dbItem){
+    const {students} = nsGetBlockStudents();
+    const marks = (typeof dbMarks!=='undefined') ? dbMarks : {};
+    const markedCount = students.filter(s=>marks[s.serial]).length;
+    if(markedCount===0) dbItem.status = 'pending';
+    else if(markedCount < students.length) dbItem.status = 'active';
+    else dbItem.status = 'done';
+  }
+
+
   // রুটিন — দুপুরের পড়া ও বিশ্রাম আইটেমের স্ট্যাটাস
   const asItem = ROUTINE.find(r=>r.id==='afternoon-study');
   if(asItem){
@@ -5338,6 +5422,7 @@ function renderDashboard(){
     'sick-classskip': `onclick="scOpenOptions()" style="cursor:pointer"`,
     'zohr-lunch': `onclick="zlOpenOptions()" style="cursor:pointer"`,
     'sick-followup': `onclick="sfOpenOptions()" style="cursor:pointer"`,
+    'dining-breakfast': `onclick="dbOpenOptions()" style="cursor:pointer"`,
     'afternoon-study': `onclick="asOpenOptions()" style="cursor:pointer"`,
     'sports-check': `onclick="toggleSportsCheck(event)" style="cursor:pointer"`,
     'asr-namaz': `onclick="nsOpenOptions('আসর')" style="cursor:pointer"`,
@@ -5405,6 +5490,8 @@ function renderDashboard(){
   if(typeof ccSyncTodayForDashboard==='function') ccSyncTodayForDashboard();
   // জোহর নামাজ ও দুপুরের খাবার — Firebase থেকে রিয়েল-টাইম সিঙ্ক
   if(typeof zlSyncTodayForDashboard==='function') zlSyncTodayForDashboard();
+  // ডাইনিং তদারকি (সকালের নাস্তা) — Firebase থেকে রিয়েল-টাইম সিঙ্ক
+  if(typeof dbSyncTodayForDashboard==='function') dbSyncTodayForDashboard();
 }
 
 function renderCleanlinessDashReport(user){
@@ -13102,6 +13189,7 @@ const RP_FD_CATEGORIES = [
   {id:'cleanliness', label:'পরিচ্ছন্নতা ও সকালের পড়া',       icon:'🧹', startHour:7,  startMin:0,  path:'cleanliness',                     meta:()=>CC_META},
   {id:'uniform',     label:'ইউনিফর্ম পরে ক্লাসে যাওয়া',      icon:'👔', startHour:8,  startMin:0,  path:'uniform',                         meta:()=>UF_OPTIONS},
   {id:'sickclassskip', label:'অসুস্থতা ও ক্লাস ফাঁকি',      icon:'🏥', startHour:8,  startMin:40, path:'sickClassSkip', dataAdapter:raw=>raw.marks||{}, meta:()=>SC_META},
+  {id:'diningbreakfast', label:'ডাইনিং তদারকি — সকালের নাস্তা', icon:'🍽️', startHour:9, startMin:30, path:'diningBreakfast',                meta:()=>DB_OPTIONS},
   {id:'zohr',        label:'জোহর নামাজ ও দুপুরের খাবার',      icon:'🕌', startHour:13, startMin:20, path:'zohrLunch',                       meta:()=>ZL_META},
   {id:'sickfollowup', label:'অসুস্থ শিক্ষার্থীদের খোঁজখবর',  icon:'🏥', startHour:13, startMin:0,  path:'sickFollowup',                    meta:()=>SF_COND,
     studentsFilter: s=>(typeof hlRecords!=='undefined') && hlRecords.some(r=>r.stuName===s.name.toUpperCase() && (r.status==='active'||r.status==='recovering'))},
