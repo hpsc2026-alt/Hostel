@@ -1684,11 +1684,30 @@ const AC_OPTIONS = {
   lesson_done:      {label:'পড়া দিয়েছে',          ico:'📗', group:'lesson',     cls:'ns-badge-ontime', pts:1,  ptype:'plus',  cat:'arabic', desc:'আরবি ক্লাসের পড়া দিয়েছে।'},
   lesson_not_done:  {label:'পড়া দেয়নি',           ico:'📕', group:'lesson',     cls:'ns-badge-qaza',   pts:1,  ptype:'minus', cat:'arabic', desc:'আরবি ক্লাসের পড়া দেয়নি।'},
 };
-const ARABIC_TEACHER_BLOCK_MAP = {arabic01:'A', arabic02:'B', arabic03:'C', arabic04:'D'};
+const ARABIC_TEACHER_BLOCK_MAP = {arabic01:'A', arabic02:'B', arabic03:'C', arabic04:'D'}; // পুরনো — ঐতিহাসিক রেফারেন্সের জন্য রাখা, নতুন লজিক আর এটা ব্যবহার করে না
 const ARABIC_TEACHER_NAMES = {
   arabic01:'রফিকুল ইসলাম স্যার', arabic02:'শরিফুল ইসলাম স্যার (আরবি বিভাগ)',
   arabic03:'আবু নাঈম স্যার', arabic04:'রাহমাতুল্লাহ স্যার',
 };
+
+// ══ কুরআন/আরবি ক্লাস — ছাত্র-ভিত্তিক (ব্লক-ভিত্তিক নয়) বিভাজন ══
+// আগে প্রতিটি আরবি শিক্ষক পুরো একটা ব্লক দেখতেন (ARABIC_TEACHER_BLOCK_MAP)। এখন অ্যাডমিন প্রতিটি ছাত্রকে
+// আলাদাভাবে একজন নির্দিষ্ট আরবি শিক্ষকের কাছে বণ্টন করে দেন — { studentSerial: teacherId }
+let ARABIC_ASSIGNMENT = {};
+let acAssignFbLoaded = false;
+function acLoadAssignments(){
+  if(acAssignFbLoaded) return; acAssignFbLoaded=true;
+  fbListen('arabicAssignments', data=>{
+    ARABIC_ASSIGNMENT = data || {};
+    if(document.getElementById('page-arabic')?.classList.contains('active')) acRenderList();
+    if(document.getElementById('page-quran-division')?.classList.contains('active')) qdRender();
+  });
+}
+// একজন ছাত্রকে একজন আরবি শিক্ষকের কাছে বণ্টন করা (বা বণ্টন বাতিল করতে teacherId=null)
+function acAssignStudent(serial, teacherId){
+  if(teacherId){ ARABIC_ASSIGNMENT[serial] = teacherId; fbSet('arabicAssignments/'+serial, teacherId); }
+  else { delete ARABIC_ASSIGNMENT[serial]; fbSet('arabicAssignments/'+serial, null); }
+}
 
 let acMarks = {};        // { studentSerial: {attendance:'present'|..., lesson:'done'|...} }
 let acCurrentOption = null;
@@ -1697,15 +1716,18 @@ function acGetBlockStudents(){
   if(allStudents.length===0) assignRooms();
   const raw = localStorage.getItem('hms_user');
   const user = raw ? JSON.parse(raw) : {role:'super'};
-  const blk = ARABIC_TEACHER_BLOCK_MAP[user.id] || null;
-  let students = blk ? allStudents.filter(s=>(s.block||s.blk)===blk) : allStudents;
+  const isTeacher = !!ARABIC_TEACHER_NAMES[user.id];
+  // শিক্ষক হলে শুধু তার নিজের বণ্টন করা ছাত্র, অন্যথায় (admin/super) সকল বণ্টিত ছাত্র
+  let students = isTeacher
+    ? allStudents.filter(s=>ARABIC_ASSIGNMENT[s.serial]===user.id)
+    : allStudents.filter(s=>!!ARABIC_ASSIGNMENT[s.serial]);
   // ছুটিতে থাকা ছাত্রদের এই মডিউল থেকেও বাদ দেওয়া হয় (অন্যান্য মডিউলের মতোই)
   if(typeof lvRecords!=='undefined' && typeof lvIsActiveToday==='function'){
     students = students.filter(s => !lvRecords.some(r=>r.stuSerial===s.serial && lvIsActiveToday(r)));
   }
   // হিন্দু ছাত্ররা আরবি ক্লাস/কুরআন পড়ার তালিকা ও রিপোর্ট থেকে স্বয়ংক্রিয়ভাবে বাদ পড়বে
   students = students.filter(s=>!nsIsReligionExempt(s));
-  return {user, blk, students};
+  return {user, teacherId: isTeacher?user.id:null, students};
 }
 
 function acOpenOptions(){
@@ -1717,9 +1739,10 @@ function acCloseOptions(){
 
 let acUnsubscribe = null;
 function acOpenStudentList(){
-  const {blk} = acGetBlockStudents();
-  document.getElementById('ac-page-title').textContent = 'আরবি ক্লাস';
-  document.getElementById('ac-page-sub').textContent = blk ? ('ব্লক '+blk+' — '+(ARABIC_TEACHER_NAMES[JSON.parse(localStorage.getItem('hms_user')||'{}').id]||BLOCKS[blk].supervisor)) : 'সকল আরবি শিক্ষকের ছাত্র';
+  if(typeof acLoadAssignments==="function") acLoadAssignments();
+  const {teacherId, user} = acGetBlockStudents();
+  document.getElementById('ac-page-title').textContent = 'আরবি ক্লাস (কুরআন)';
+  document.getElementById('ac-page-sub').textContent = teacherId ? ('আমার নির্ধারিত ছাত্র — '+(ARABIC_TEACHER_NAMES[teacherId]||user.name||'')) : 'সকল আরবি শিক্ষকের নির্ধারিত ছাত্র';
   acRenderList();
   showPage('arabic');
 
@@ -1785,7 +1808,7 @@ function acRenderRows(students){
 }
 
 function acRenderList(){
-  const {blk, students} = acGetBlockStudents();
+  const {teacherId, students} = acGetBlockStudents();
   const bnN = n=>String(n).replace(/\d/g,x=>"০১২৩৪৫৬৭৮৯"[x]);
 
   let counts = {present:0, absent:0, partial:0, leave:0, lesson_done:0, lesson_not_done:0};
@@ -1804,16 +1827,23 @@ function acRenderList(){
   document.getElementById('ac-stat-lesson-not').textContent = bnN(counts.lesson_not_done);
 
   let html = '';
-  if(blk){
-    html += `<div class="ns-list-wrap">`+acRenderRows(students)+`</div>`;
+  if(teacherId){
+    if(!students.length){
+      html = `<div style="text-align:center;padding:30px 16px;color:#8b98a3;font-size:13px;">এখনো কোনো ছাত্র আপনার নামে বণ্টন করা হয়নি। অ্যাডমিনের সাথে যোগাযোগ করুন।</div>`;
+    } else {
+      html += `<div class="ns-list-wrap">`+acRenderRows(students)+`</div>`;
+    }
   } else {
-    ['A','B','C','D'].forEach(bk=>{
-      const studs = students.filter(s=>(s.block||s.blk)===bk);
+    Object.keys(ARABIC_TEACHER_NAMES).forEach(tid=>{
+      const studs = students.filter(s=>ARABIC_ASSIGNMENT[s.serial]===tid);
       if(!studs.length) return;
-      const teacherId = Object.keys(ARABIC_TEACHER_BLOCK_MAP).find(k=>ARABIC_TEACHER_BLOCK_MAP[k]===bk);
-      html += `<div class="ns-block-hd">ব্লক ${bk} — ${ARABIC_TEACHER_NAMES[teacherId]||''}</div>`;
+      html += `<div class="ns-block-hd">📖 ${ARABIC_TEACHER_NAMES[tid]} (${bnN(studs.length)} জন)</div>`;
       html += `<div class="ns-list-wrap">`+acRenderRows(studs)+`</div>`;
     });
+    const unassigned = allStudents.filter(s=>!nsIsReligionExempt(s) && !ARABIC_ASSIGNMENT[s.serial]);
+    if(unassigned.length){
+      html += `<div class="ns-block-hd" style="color:#c94545;">⚠️ কোনো শিক্ষকের কাছে এখনো বণ্টন করা হয়নি (${bnN(unassigned.length)} জন) — অ্যাডমিন প্যানেলে "কুরআন ক্লাসের ছাত্র বিভাজন" থেকে ঠিক করুন</div>`;
+    }
   }
   document.getElementById('ac-list').innerHTML = html;
 }
@@ -1837,7 +1867,135 @@ function acShowReport(){
   msg += '📕 পড়া দেয়নি ('+grouped.lesson_not_done.length+'): '+(grouped.lesson_not_done.join(', ')||'—');
   alert(msg);
 }
+</script>
 
+<!-- ══ PAGE: কুরআন ক্লাসের ছাত্র বিভাজন (অ্যাডমিন/সুপার) — প্রতিটি আরবি শিক্ষকের কাছে ব্যক্তিগতভাবে ছাত্র বণ্টন ══ -->
+<div id="page-quran-division" class="page" style="background:#faf8f2;min-height:100vh;padding-bottom:80px;">
+  <div class="topbar">
+    <div class="tb-back" onclick="goDashboard()">←</div>
+    <div class="tb-info"><div class="tb-title">📖 কুরআন ক্লাসের ছাত্র বিভাজন</div><div class="tb-sub">আরবি শিক্ষক নির্বাচন করে তার ছাত্র নির্ধারণ করুন</div></div>
+  </div>
+  <div id="qd-teacher-list" style="padding:14px 16px;"></div>
+  <div style="height:20px;"></div>
+</div>
+
+<!-- ছাত্র নির্বাচন শীট — একজন নির্দিষ্ট আরবি শিক্ষকের জন্য "ছাত্র যুক্ত করুন" -->
+<div class="ns-overlay hide" id="qdAddOverlay" onclick="if(event.target===this) qdCloseAdd()">
+  <div class="ns-sheet" style="max-height:85vh;overflow-y:auto;">
+    <div class="ns-handle"></div>
+    <div class="ns-title" id="qd-add-title">ছাত্র যুক্ত করুন</div>
+    <input type="text" id="qd-search" placeholder="🔍 নাম দিয়ে খুঁজুন..." style="width:100%;padding:10px 12px;border:1.5px solid #e2dbc7;border-radius:10px;font-size:13px;margin:8px 0 12px;box-sizing:border-box;" oninput="qdRenderStudentPicker()">
+    <div id="qd-picker-list"></div>
+    <button class="ns-close-btn" style="background:#2f9e5c;color:#fff;margin-top:12px;" onclick="qdConfirmAdd()">✅ নির্বাচিত ছাত্র যুক্ত করুন</button>
+    <button class="ns-close-btn" onclick="qdCloseAdd()">বাতিল</button>
+  </div>
+</div>
+
+<script>
+// ── কুরআন/আরবি ক্লাসের ছাত্র-ভিত্তিক বিভাজন — শুধুমাত্র অ্যাডমিন/সুপার ব্যবহার করবেন ──
+let qdCurrentTeacher = null;
+let qdSelected = new Set();
+
+function goQuranDivision(){
+  if(typeof acLoadAssignments==="function") acLoadAssignments();
+  qdCurrentTeacher = null;
+  qdRender();
+  showPage('quran-division');
+}
+
+// শিক্ষক-তালিকা — প্রতিটি আরবি শিক্ষকের নামের নিচে কতজন ছাত্র বর্তমানে নির্ধারিত তা দেখায়
+function qdRender(){
+  if(allStudents.length===0) assignRooms();
+  const bnN = n=>String(n).replace(/\d/g,x=>"০১২৩৪৫৬৭৮৯"[x]);
+  const html = Object.keys(ARABIC_TEACHER_NAMES).map(tid=>{
+    const myStudents = allStudents.filter(s=>ARABIC_ASSIGNMENT[s.serial]===tid);
+    return `<div class="rk-list-card" style="margin-bottom:12px;">
+      <div class="rk-row" style="cursor:pointer;" onclick="qdOpenTeacher('${tid}')">
+        <div class="rk-rank-num" style="background:#eef1f4;color:#a9822f;">📖</div>
+        <div class="rk-info">
+          <div class="rk-name">${ARABIC_TEACHER_NAMES[tid]}</div>
+          <div class="rk-meta">নির্ধারিত ছাত্র: ${bnN(myStudents.length)} জন</div>
+        </div>
+        <div style="font-size:18px;color:#8b98a3;">›</div>
+      </div>
+    </div>`;
+  }).join('');
+  const unassigned = allStudents.filter(s=>!nsIsReligionExempt(s) && !ARABIC_ASSIGNMENT[s.serial]);
+  document.getElementById('qd-teacher-list').innerHTML = html +
+    (unassigned.length ? `<div style="font-size:12px;color:#c94545;margin-top:8px;text-align:center;">⚠️ ${bnN(unassigned.length)} জন ছাত্র এখনো কোনো শিক্ষকের কাছে বণ্টন করা হয়নি</div>` : '');
+}
+
+// একজন নির্দিষ্ট শিক্ষকের বিস্তারিত — তার নির্ধারিত ছাত্রদের তালিকা + যোগ/বাদ দেওয়ার অপশন
+function qdOpenTeacher(tid){
+  qdCurrentTeacher = tid;
+  const bnN = n=>String(n).replace(/\d/g,x=>"০১২৩৪৫৬৭৮৯"[x]);
+  const myStudents = allStudents.filter(s=>ARABIC_ASSIGNMENT[s.serial]===tid).sort((a,b)=>a.name.localeCompare(b.name));
+  let html = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+    <div onclick="qdRender()" style="cursor:pointer;font-size:20px;color:#5c6f7a;">←</div>
+    <div style="font-size:14px;font-weight:700;color:#24313b;">${ARABIC_TEACHER_NAMES[tid]}</div>
+  </div>
+  <button class="ns-close-btn" style="background:#2f9e5c;color:#fff;margin-bottom:12px;width:100%;" onclick="qdOpenAdd('${tid}')">➕ ছাত্র যুক্ত করুন</button>`;
+  if(!myStudents.length){
+    html += `<div style="text-align:center;padding:24px;color:#8b98a3;font-size:13px;">এখনো কোনো ছাত্র নির্ধারণ করা হয়নি।</div>`;
+  } else {
+    html += `<div class="rk-list-card">`+myStudents.map(s=>`
+      <div class="rk-row">
+        <div class="rk-info">
+          <div class="rk-name">${s.name}</div>
+          <div class="rk-meta">${CLASS_BN[s.cls]} শ্রেণী • ব্লক ${s.block||s.blk} • রুম ${s.room}</div>
+        </div>
+        <div style="color:#c94545;font-size:12px;font-weight:700;cursor:pointer;padding:6px 10px;" onclick="qdRemoveStudent(${s.serial})">✕ বাদ দিন</div>
+      </div>`).join('')+`</div>`;
+  }
+  document.getElementById('qd-teacher-list').innerHTML = html;
+}
+
+function qdRemoveStudent(serial){
+  if(!confirm('এই ছাত্রকে এই শিক্ষকের তালিকা থেকে বাদ দিতে চান?')) return;
+  acAssignStudent(serial, null);
+  qdOpenTeacher(qdCurrentTeacher);
+}
+
+// "ছাত্র যুক্ত করুন" শীট — মার্ক করে একাধিক ছাত্র একসাথে নির্বাচন করে যুক্ত করা যায়
+function qdOpenAdd(tid){
+  qdCurrentTeacher = tid;
+  qdSelected = new Set();
+  document.getElementById('qd-add-title').textContent = (ARABIC_TEACHER_NAMES[tid]||'')+' — ছাত্র যুক্ত করুন';
+  document.getElementById('qd-search').value = '';
+  qdRenderStudentPicker();
+  document.getElementById('qdAddOverlay').classList.remove('hide');
+}
+function qdCloseAdd(){
+  document.getElementById('qdAddOverlay').classList.add('hide');
+}
+function qdRenderStudentPicker(){
+  if(allStudents.length===0) assignRooms();
+  const q = (document.getElementById('qd-search').value||'').trim().toUpperCase();
+  let list = allStudents.filter(s=>!nsIsReligionExempt(s));
+  if(q) list = list.filter(s=>s.name.toUpperCase().includes(q));
+  list.sort((a,b)=>a.name.localeCompare(b.name));
+  document.getElementById('qd-picker-list').innerHTML = list.map(s=>{
+    const assignedTo = ARABIC_ASSIGNMENT[s.serial];
+    const isChecked = qdSelected.has(s.serial);
+    const otherTeacherNote = (assignedTo && assignedTo!==qdCurrentTeacher) ? ` <span style="color:#a9822f;">⚠️ বর্তমানে ${ARABIC_TEACHER_NAMES[assignedTo]||''}-এর কাছে</span>` : '';
+    return `<div class="cc-check ${isChecked?'checked':''}" style="width:100%;box-sizing:border-box;margin-bottom:6px;justify-content:flex-start;" onclick="qdToggleSelect(${s.serial})">
+      <span class="cc-box">${isChecked?'✓':''}</span>${s.name} — ${CLASS_BN[s.cls]}, ব্লক ${s.block||s.blk}${otherTeacherNote}
+    </div>`;
+  }).join('');
+}
+function qdToggleSelect(serial){
+  if(qdSelected.has(serial)) qdSelected.delete(serial); else qdSelected.add(serial);
+  qdRenderStudentPicker();
+}
+function qdConfirmAdd(){
+  if(!qdCurrentTeacher || qdSelected.size===0){ qdCloseAdd(); return; }
+  qdSelected.forEach(serial=>acAssignStudent(serial, qdCurrentTeacher));
+  qdCloseAdd();
+  qdOpenTeacher(qdCurrentTeacher);
+}
+</script>
+
+<script>
 // ── সময়সীমা ও স্টাফ-পারফরম্যান্স সহায়ক ফাংশন (পরিচ্ছন্নতা/পড়া ও ইউনিফর্মের জন্য ভাগাভাগি) ──
 function getSessionUser(){
   const raw = localStorage.getItem('hms_user');
@@ -4712,9 +4870,12 @@ const ROLE_CONFIG = {
       {icon:'📊', label:'সম্পূর্ণ রিপোর্ট', onclick:'goReport()'},
       {icon:'🕐', label:'আজকের রুটিন প্রতিবেদন', onclick:'goRoutineFullReport()'},
       {icon:'👨‍💼', label:'স্টাফ ব্যবস্থাপনা', onclick:'goStaffKpi()'},
+      {icon:'📖', label:'কুরআন ক্লাসের ছাত্র বিভাজন', onclick:'goQuranDivision()'},
+      {icon:'🗒️', label:'রিপোর্ট দেওয়া বাকি আছে', onclick:'goReportPending()'},
       {icon:'🚨', label:'অভিযোগ কেন্দ্র', onclick:'goComplaintCenter()'},
       {icon:'🔍', label:'পরিদর্শন প্রতিবেদন', onclick:'obOpen()'},
       {icon:'🏆', label:'সহকারী র‍্যাংকিং', onclick:'goStaffRanking()'},
+      {icon:'📖', label:'আরবি শিক্ষক র‍্যাংকিং', onclick:'goArabicRanking()'},
     ],
     showStaff: true,
   },
@@ -4731,9 +4892,11 @@ const ROLE_CONFIG = {
     ],
     quickActions: [
       {icon:'🕐', label:'আজকের রুটিন প্রতিবেদন', onclick:'goRoutineFullReport()'},
+      {icon:'🗒️', label:'রিপোর্ট দেওয়া বাকি আছে', onclick:'goReportPending()'},
       {icon:'🚨', label:'অভিযোগ কেন্দ্র', onclick:'goComplaintCenter()'},
       {icon:'🔍', label:'পরিদর্শন প্রতিবেদন', onclick:'obOpen()'},
       {icon:'🏆', label:'সহকারী র‍্যাংকিং', onclick:'goStaffRanking()'},
+      {icon:'📖', label:'আরবি শিক্ষক র‍্যাংকিং', onclick:'goArabicRanking()'},
       {icon:'🚪', label:'ছুটি অনুমোদন', onclick:'goLeave()'},
       {icon:'⚖️', label:'আচরণ রেকর্ড', onclick:'goBehaviour()'},
     ],
@@ -4755,6 +4918,7 @@ const ROLE_CONFIG = {
       {icon:'🏥', label:'স্বাস্থ্য', onclick:'goHealth()'},
       {icon:'📊', label:'আমার রিপোর্ট', onclick:'goReport()'},
       {icon:'🏆', label:'আমার র‍্যাংকিং', onclick:'goStaffRanking()'},
+      {icon:'🗒️', label:'রিপোর্ট দেওয়া বাকি আছে', onclick:'goReportPending()'},
       {icon:'🚨', label:'অভিযোগ দিন', onclick:'goFileComplaint()'},
       {icon:'📋', label:'অভিযোগ কেন্দ্র দেখুন', onclick:'goComplaintCenter()'},
     ],
@@ -4771,6 +4935,10 @@ const ROLE_CONFIG = {
     quickActions: [
       {icon:'📖', label:'আরবি ক্লাস হাজিরা', onclick:'acOpenOptions()'},
       {icon:'📊', label:'রিপোর্ট দেখুন', onclick:'acShowReport()'},
+      {icon:'🏆', label:'আমার র‍্যাংকিং', onclick:'goArabicRanking()'},
+      {icon:'🗒️', label:'রিপোর্ট দেওয়া বাকি আছে', onclick:'goReportPending()'},
+      {icon:'🚨', label:'অভিযোগ দিন', onclick:'goFileComplaint()'},
+      {icon:'📋', label:'অভিযোগ কেন্দ্র দেখুন', onclick:'goComplaintCenter()'},
     ],
     showStaff: false,
   },
@@ -5460,6 +5628,9 @@ assignRooms();
 if(typeof bhLoadHistoryFromFirebase==="function") bhLoadHistoryFromFirebase();
 if(typeof hlLoadHistoryFromFirebase==="function") hlLoadHistoryFromFirebase();
 if(typeof srLoadTimelyFromFirebase==="function") srLoadTimelyFromFirebase();
+if(typeof srLoadAssignmentHistory==="function") srLoadAssignmentHistory();
+if(typeof acLoadAssignments==="function") acLoadAssignments();
+if(typeof rpLoadActions==="function") rpLoadActions();
 if(typeof ogLoadFromFirebase==="function") ogLoadFromFirebase();
 
 // ── নতুন ছাত্র ভর্তি / বিদায়ী ছাত্র ডিলিট — Firebase-এ সিঙ্ক থাকে ──
@@ -5756,7 +5927,8 @@ const CL_TASKS=[
   {id:1,shift:'ফজর', ico:'🌙',task:'ছাত্রদের ঘুম থেকে ডাকা',           note:'ফজরের আগে সবাইকে উঠানো'},
   {id:2,shift:'ফজর', ico:'🕌',task:'ফজর নামাজ নিশ্চিত করা',            note:'সবাই জামায়াতে পড়েছে কিনা'},
   {id:3,shift:'ফজর', ico:'📖',task:'কোরআন/হাদিস আলোচনা ১০-১৫ মিনিট',  note:'ফজরের পরে আলোচনা সম্পন্ন'},
-  {id:4,shift:'সকাল',ico:'🕌',task:'আরবি ক্লাসে উপস্থিতি নিশ্চিত',    note:'সবাই আরবি ক্লাসে গেছে কিনা'},
+  // "আরবি ক্লাসে উপস্থিতি নিশ্চিত" আইটেমটি এখান থেকে সরানো হলো — এই কাজ এখন সম্পূর্ণভাবে
+  // আরবি শিক্ষকদের নিজস্ব "আরবি ক্লাস" মডিউলের মাধ্যমে (ছাত্র-ভিত্তিক বণ্টন অনুযায়ী) পরিচালিত হয়
   {id:5,shift:'সকাল',ico:'📚',task:'সকালের পড়া তদারকি',                note:'ফাঁকি দিচ্ছে কিনা দেখা'},
   {id:6,shift:'সকাল',ico:'👔',task:'ইউনিফর্ম ও সময়মতো ক্লাসে যাওয়া',  note:'ড্রেসকোড মেনে চলছে কিনা'},
   {id:7,shift:'সকাল',ico:'🍽️',task:'ডাইনিং তদারকি — সকালের নাস্তা',    note:'সবাই খেয়েছে কিনা'},
@@ -5946,7 +6118,7 @@ function submitChecklist(){
 const BH_CAT_LABELS={namaz:"নামাজ ফাঁকি",study:"পড়া ফাঁকি",fight:"মারামারি",dining:"ডাইনিং বিশৃঙ্খলা",uniform:"ইউনিফর্ম লঙ্ঘন",escape:"পলায়ন",good:"ভালো আচরণ",arabic:"আরবি ক্লাস",other:"অন্যান্য",severe:"গুরুতর অসদাচরণ",classSkip:"ক্লাস ফাঁকি"};
 const BH_CAT_ICO={namaz:"🕌",study:"📚",fight:"👊",dining:"🍽️",uniform:"👔",escape:"🚪",good:"⭐",arabic:"📖",other:"📋",severe:"🚨",classSkip:"🚫"};
 
-// ══ ডিসিপ্লিনারি KPI স্পেক — ৬টি নির্দিষ্ট গ্রুপ, নির্দিষ্ট পয়েন্ট, ১৫-দিনের গ্রেস/ক্লাস্টার রুল ══
+// ══ ডিসিপ্লিনারি KPI স্পেক — ৬টি নির্দিষ্ট গ্রুপ, নির্দিষ্ট পয়েন্ট, ডিকে-ভিত্তিক গ্রেস/ক্লাস্টার রুল ══
 const DISC_GROUPS = {
   ibadah:  {label:"নামাজ ও ইবাদতে অবহেলা",        pts:2,  tier:"minor"},
   study:   {label:"পড়াশোনা/ক্লাস অবহেলা",          pts:2,  tier:"minor"},
@@ -5957,29 +6129,71 @@ const DISC_GROUPS = {
 };
 // পুরনো bhRecords ক্যাটাগরি-কী থেকে নতুন ডিসিপ্লিনারি গ্রুপে ম্যাপিং
 const CAT_TO_GROUP = {namaz:"ibadah", study:"study", uniform:"conduct", dining:"conduct", other:"conduct", fight:"fight", escape:"escape", severe:"severe"};
-const DISC_GRACE_DAYS = 15;      // গ্রেস/ক্লাস্টার উইন্ডো
-const DISC_MONTHLY_BONUS = 10;   // মাসে একটাও মাইনাস ঘটনা না থাকলে বোনাস
 
-// একটা নির্দিষ্ট ছাত্রের bhRecords (minus, real ts থাকা) থেকে গ্রেস/ক্লাস্টার নিয়ম প্রয়োগ করে প্রকৃত পয়েন্ট বের করা
-// নিয়ম: মাইনর ক্যাটাগরিতে (ibadah/study/conduct) ১৫ দিনের উইন্ডোতে ১ম ঘটনা ক্ষমা (০ পয়েন্ট, শুধু সতর্কতা),
-// ২য় ঘটনায় পূর্ণ পয়েন্ট, ৩য়+ ঘটনায় দেড়গুণ পয়েন্ট (প্যাটার্ন ঠেকাতে)। মেজর/সিভিয়ার (fight/escape/severe) — সবসময় পূর্ণ পয়েন্ট, কোনো গ্রেস নেই।
+// ══ কেন্দ্রীয় র‍্যাংকিং কনফিগারেশন (v2.0) — সব ওজন/থ্রেশহোল্ড এক জায়গায়, পরিবর্তন হলে ভার্সন+তারিখ বাড়ানো উচিত ══
+const RANK_CONFIG = {
+  version: "2.1",
+  updatedAt: "2026-07-08",
+  disc: {
+    decayHalfLifeDays: 10,   // আগের মাইনর ঘটনার "প্রভাব" প্রতি ১০ দিনে অর্ধেক কমে
+    lookbackDays: 45,        // এর বেশি পুরনো ঘটনা এস্কেলেশন হিসাবে ধরা হয় না
+    graceThreshold: 0.5,     // ডিকে-ওয়েট এর নিচে হলে কার্যত "বিচ্ছিন্ন/১ম" ঘটনা — ক্ষমা
+    maxEscalation: 1.5,      // সর্বোচ্চ কতগুণ পর্যন্ত পয়েন্ট বাড়তে পারে (প্যাটার্ন প্রতিরোধ)
+    escalationRate: 0.3,     // প্রতি একক ডিকে-ওয়েটে এস্কেলেশনের হার
+    monthlyBonus: 10,        // পূর্ণ ক্যালেন্ডার মাসে একটাও মাইনাস ঘটনা না থাকলে বোনাস
+  },
+  student: {
+    minCoverageDaysMonth: 10,  // মাসিক র‍্যাংকিংয়ে "অফিসিয়াল" গণ্য হতে ন্যূনতম ট্র্যাকড দিন, কম হলে "প্রভিশনাল"
+    minCoverageDaysYear: 60,   // বাৎসরিক র‍্যাংকিংয়ে
+    componentShrinkK: 8,       // প্রতি উপাদানে স্বল্প-ডেটা শ্রিংকেজ শক্তি (কম ডেটায় প্রাতিষ্ঠানিক গড়ের দিকে টানা)
+  },
+  staff: {
+    manualDifficultyWeight: 0.25, // আগে ছিল ০.৫০ (৫০%) — সাবজেক্টিভ/পক্ষপাতের ঝুঁকি কমাতে ২৫%-এ নামানো হলো
+    perfWeight: 0.65,
+    timelyWeight: 0.35,
+    obsWeight: 0.1,                // observation থাকলে চূড়ান্ত স্কোরে তার ওজন
+    minObsPerMonth: 1,             // প্রতি মাসে ন্যূনতম observation না থাকলে সতর্কতা ব্যাজ দেখানো হবে
+    stalePenaltyPerItem: 4,        // "রিপোর্ট দেওয়া বাকি" ৩+ দিন অমীমাংসিত থাকা প্রতিটি আইটেমের জন্য পেনাল্টি (পয়েন্ট)
+    maxStalePenalty: 30,           // সর্বোচ্চ কত পয়েন্ট পর্যন্ত এই পেনাল্টি কাটা যাবে
+  },
+  // ══ আরবি শিক্ষকদের র‍্যাংকিং — সম্পূর্ণ আলাদা পুল, শুধু ৪ জন আরবি শিক্ষকের মধ্যে তুলনা, হাউস টিউটরদের সাথে মেশানো হয় না ══
+  arabic: {
+    perfWeight: 0.6,          // ছাত্রের উপস্থিতি/পড়া-সম্পন্নের হার (নির্ধারিত ছাত্রদের মধ্যে)
+    completenessWeight: 0.4,  // রিপোর্ট-সম্পূর্ণতা (কতগুলো দিন পুরোপুরি রিপোর্ট দেওয়া হয়েছে)
+    shrinkKPerf: 10,          // ছাত্র-পারফরম্যান্সে শ্রিংকেজ শক্তি (কম রেকর্ডে প্রাতিষ্ঠানিক গড়ের দিকে টানা)
+    shrinkKCompleteness: 5,   // রিপোর্ট-সম্পূর্ণতায় শ্রিংকেজ শক্তি
+    stalePenaltyPerItem: 4,   // "রিপোর্ট দেওয়া বাকি" ৩+ দিন অমীমাংসিত থাকা প্রতিটি আইটেমের জন্য পেনাল্টি
+    maxStalePenalty: 30,
+  }
+};
+
+// রিসেন্সি-ভিত্তিক ডিকে-ওয়েটেড গ্রেস/এস্কেলেশন রুল — হার্ড ১৫-দিনের উইন্ডোর বদলে এক্সপোনেনশিয়াল ডিকে ব্যবহার করা হয়,
+// যাতে ঠিক ১৫+ দিন ব্যবধানে ঘটনা সাজিয়ে "গ্রেস" গেম করা সম্ভব না হয় — প্রতিটি আগের ঘটনার প্রভাব ধারাবাহিকভাবে কমতে থাকে,
+// কোনো আকস্মিক ধাপ (০ → পূর্ণ → দেড়গুণ) নেই। মেজর/সিভিয়ার — সবসময় পূর্ণ পয়েন্ট, কোনো গ্রেস নেই।
 function bhApplyGraceRule(records){
   const byGroup = {};
   const sorted = records.slice().sort((a,b)=>a.ts-b.ts);
+  const halfLife = RANK_CONFIG.disc.decayHalfLifeDays*86400000;
+  const lookback = RANK_CONFIG.disc.lookbackDays*86400000;
   return sorted.map(r=>{
     const grp = CAT_TO_GROUP[r.cat];
-    if(!grp || !DISC_GROUPS[grp]) return {...r, adjPts:r.pts, graceApplied:false};
+    if(!grp || !DISC_GROUPS[grp]) return {...r, adjPts:r.pts, graceApplied:false, decayWeight:0};
     const conf = DISC_GROUPS[grp];
-    if(conf.tier!=="minor") return {...r, adjPts:conf.pts, graceApplied:false};
+    if(conf.tier!=="minor") return {...r, adjPts:conf.pts, graceApplied:false, decayWeight:0};
     if(!byGroup[grp]) byGroup[grp]=[];
-    const windowStart = r.ts - DISC_GRACE_DAYS*86400000;
-    const priorInWindow = byGroup[grp].filter(t=>t>=windowStart).length;
+    // এই গ্রুপের আগের সব ঘটনার এক্সপোনেনশিয়াল-ডিকে-করা ওজনের যোগফল (lookback উইন্ডোর মধ্যে)
+    const decayWeight = byGroup[grp]
+      .filter(t=>r.ts-t<=lookback)
+      .reduce((s,t)=>s+Math.pow(0.5,(r.ts-t)/halfLife),0);
     byGroup[grp].push(r.ts);
     let adjPts, graceApplied=false;
-    if(priorInWindow===0){ adjPts=0; graceApplied=true; }      // ১ম বার — ক্ষমা
-    else if(priorInWindow===1){ adjPts=conf.pts; }              // ২য় বার — পূর্ণ পয়েন্ট
-    else { adjPts=Math.round(conf.pts*1.5); }                   // ৩য়+ বার — দেড়গুণ (ক্লাস্টার)
-    return {...r, adjPts, graceApplied};
+    if(decayWeight < RANK_CONFIG.disc.graceThreshold){
+      adjPts=0; graceApplied=true;   // কার্যত বিচ্ছিন্ন/১ম ঘটনা — ক্ষমা, শুধু সতর্কতা
+    } else {
+      const escFactor = 1 + Math.min(RANK_CONFIG.disc.maxEscalation-1, decayWeight*RANK_CONFIG.disc.escalationRate);
+      adjPts = Math.round(conf.pts*escFactor*10)/10; // ধারাবাহিক এস্কেলেশন, হার্ড ধাপ নয়
+    }
+    return {...r, adjPts, graceApplied, decayWeight:Math.round(decayWeight*100)/100};
   });
 }
 
@@ -6000,7 +6214,7 @@ function bhNetDiscPoints(stuName, startTs, endTs){
     const rangeStart=Math.max(mStart,startTs), rangeEnd=Math.min(mEnd,endTs);
     if(rangeStart<=rangeEnd){
       const hasIncident = minusRaw.some(r=>r.ts>=mStart && r.ts<=mEnd);
-      if(!hasIncident) monthlyBonus += DISC_MONTHLY_BONUS;
+      if(!hasIncident) monthlyBonus += RANK_CONFIG.disc.monthlyBonus;
     }
     cur.setMonth(cur.getMonth()+1);
   }
@@ -6052,8 +6266,15 @@ function bhPopulateStudents(){
   if(allStudents.length===0) assignRooms();
   const sel=document.getElementById("bh-stu-select");
   sel.innerHTML="<option value=''>— ছাত্র নির্বাচন করুন —</option>";
+  const user = (typeof getSessionUser==="function") ? getSessionUser() : null;
   const myBlk = getMyRestrictedBlock();
-  const list = myBlk ? allStudents.filter(s=>(s.block||s.blk)===myBlk) : allStudents;
+  let list;
+  if(user && user.role==="arabic"){
+    // আরবি শিক্ষক শুধু নিজের নামে বণ্টন করা ছাত্রদের বিরুদ্ধে/পক্ষে অভিযোগ/রিপোর্ট দিতে পারবেন
+    list = allStudents.filter(s=>(typeof ARABIC_ASSIGNMENT!=="undefined") && ARABIC_ASSIGNMENT[s.serial]===user.id);
+  } else {
+    list = myBlk ? allStudents.filter(s=>(s.block||s.blk)===myBlk) : allStudents;
+  }
   list.forEach(s=>{
     const o=document.createElement("option");
     o.value=s.name; o.dataset.cls=s.cls; o.dataset.blk=s.blk;
@@ -9718,10 +9939,15 @@ function srOpenDifficultySettings(){
   document.getElementById('srDifficultyOverlay').classList.remove('hide');
 }
 function srCloseDifficultySettings(){ document.getElementById('srDifficultyOverlay').classList.add('hide'); }
+// ম্যানুয়াল কঠিনতা রেটিং পরিবর্তন — এখন প্রতিটি পরিবর্তনের অডিট-লগ রাখা হয় (কে, কবে, কেন) যাতে
+// সাবজেক্টিভ রেটিং স্বেচ্ছাচারীভাবে বদলানো না যায় এবং পরে যাচাই/জবাবদিহিতা সম্ভব হয়
 function srSetDifficulty(blk, n){
-  blockDifficulty[blk] = n;
   const user = getSessionUser();
+  const oldVal = blockDifficulty[blk];
+  const note = (typeof prompt==='function') ? (prompt('কেন এই পরিবর্তন? (সংক্ষেপে কারণ লিখুন — অডিট লগে সংরক্ষিত হবে)')||'') : '';
+  blockDifficulty[blk] = n;
   fbSet('blockDifficulty/'+blk, {manual:n, updatedBy:user.name, updatedAt:Date.now()});
+  fbPush('blockDifficultyHistory', {blk, from:oldVal, to:n, note, updatedBy:user.name, updatedAt:Date.now()});
   srOpenDifficultySettings();
   if(document.getElementById('page-staff-ranking').classList.contains('active')) srRender();
 }
@@ -9741,12 +9967,40 @@ function srHistoricalDifficulty(blk, beforeTs){
   return {value: shrunkValue, n, raw: rawValue};
 }
 
+// v2.0: ম্যানুয়াল (সাবজেক্টিভ, admin-নির্ধারিত) রেটিং-এর ওজন RANK_CONFIG.staff.manualDifficultyWeight (এখন ২৫%, আগে ছিল ৫০%)
+// — পক্ষপাতের ঝুঁকি কমাতে ঐতিহাসিক ডেটা-নির্ভর মূল্যায়নকে বেশি প্রাধান্য দেওয়া হলো
 function srDifficultyFactor(blk, periodStart){
   const hist = srHistoricalDifficulty(blk, periodStart);
   const manual = blockDifficulty[blk] || 3;
-  const combined = (hist.value + manual) / 2; // ১-৫
+  const w = RANK_CONFIG.staff.manualDifficultyWeight;
+  const combined = hist.value*(1-w) + manual*w; // ১-৫
   const factor = 0.65 + ((combined-1)/4) * (1.55-0.65); // ১→০.৬৫, ৫→১.৫৫
-  return {factor: Math.round(factor*100)/100, hist: Math.round(hist.value*10)/10, histN: hist.n, manual};
+  return {factor: Math.round(factor*100)/100, hist: Math.round(hist.value*10)/10, histN: hist.n, manual, manualWeight:w};
+}
+
+// ══ ব্লক-এসাইনমেন্ট ইতিহাস — কোন সময়ে কে কোন ব্লকের দায়িত্বে ছিলেন, তার লগ ══
+// এটা ছাড়া কেউ ব্লক পরিবর্তন করলে পুরনো তারিখের পারফরম্যান্স/টাইমলি-ডেটা ভুল করে নতুন টিউটরের নামে জমা হয়ে যেত।
+// ডিফল্টভাবে বর্তমান ASST_BLOCK_MAP-কে since:0 (শুরু থেকে কার্যকর) ধরে নেওয়া হচ্ছে।
+let ASST_BLOCK_HISTORY = Object.keys(ASST_BLOCK_MAP).map(id=>({blk:ASST_BLOCK_MAP[id], assignedId:id, since:0}));
+let asstHistoryFbLoaded = false;
+function srLoadAssignmentHistory(){
+  if(asstHistoryFbLoaded) return; asstHistoryFbLoaded=true;
+  fbListen('asstBlockHistory', data=>{
+    const entries = Object.values(data||{});
+    if(entries.length) ASST_BLOCK_HISTORY = entries;
+  });
+}
+// নতুন ব্লক-এসাইনমেন্ট রেকর্ড করা — পুরনো এন্ট্রি মুছে ফেলা হয় না, ইতিহাস হিসেবে জমা থাকে
+function srReassignBlock(blk, newAssignedId){
+  const user = getSessionUser();
+  const entry = {blk, assignedId:newAssignedId, since:Date.now(), by:user.name};
+  ASST_BLOCK_HISTORY.push(entry);
+  fbPush('asstBlockHistory', entry);
+}
+// একটা নির্দিষ্ট সময়ে (periodEnd) কোন ব্লকে কে দায়িত্বে ছিলেন তা ইতিহাস থেকে বের করা — "বর্তমান পরিচয়" দেখানোর জন্য
+function getAssignedIdAt(blk, ts){
+  const entries = ASST_BLOCK_HISTORY.filter(h=>h.blk===blk && h.since<=ts).sort((a,b)=>b.since-a.since);
+  return entries.length ? entries[0].assignedId : ASST_BLOCK_MAP[blk];
 }
 
 const SHRINK_K_PERF = 10;   // ছাত্র-পারফরম্যান্সে কমপক্ষে এই পরিমাণ রেকর্ড না হলে পুরোপুরি কাঁচা অনুপাত বিশ্বাস করা হবে না
@@ -9759,7 +10013,27 @@ async function srBuildScores(period){
 
   const obsSnap = fbReady ? await fbDb.ref('observations').orderByKey().startAt(range.start).endAt(range.end).once('value').then(s=>s.val()||{}).catch(()=>({})) : {};
 
-  // ── ধাপ ১: প্রতিটি ব্লকের কাঁচা (শ্রিংকেজ ছাড়া) সংখ্যা বের করা ──
+  // ── ধাপ ০ (v2.1): "রিপোর্ট দেওয়া বাকি" — এই পিরিয়ডের মধ্যে ৩+ দিন ধরে অমীমাংসিত থাকা রুটিন-রিপোর্ট গণনা,
+  // KPI পেনাল্টির জন্য। শুধু পিরিয়ডের রেঞ্জ পর্যন্ত ফেচ করা হয় (পুরো লাইফটাইম নয়) যাতে খরচ বাড়তি না হয় ──
+  let staleCountByBlk = {A:0,B:0,C:0,D:0};
+  if(typeof rpFetchCategoryData==='function' && typeof rpEvaluateMissing==='function' && typeof rpCategoriesFor==='function'){
+    try{
+      const rpEndDate = new Date(Math.min(periodEnd, Date.now()-86400000)); // আজকে বাদ (চক্র চলমান)
+      const rpEndKey = fbDateKey(rpEndDate);
+      if(rpEndKey >= range.start){
+        const rpCats = rpCategoriesFor('asst');
+        const rpData = await rpFetchCategoryData(rpCats, range.start, rpEndKey);
+        const cutoffKey = fbDateKey(new Date(Date.now()-(typeof RP_STALE_DAYS!=='undefined'?RP_STALE_DAYS:3)*86400000));
+        ['A','B','C','D'].forEach(blk=>{
+          const items = rpEvaluateMissing('asst', blk, range.start, rpEndKey, rpData);
+          staleCountByBlk[blk] = items.filter(it=>!(typeof rpActions!=='undefined' && rpActions[it.itemKey]) && it.dateKey<=cutoffKey).length;
+        });
+      }
+    }catch(e){ console.error('স্টেল-রিপোর্ট পেনাল্টি গণনা ব্যর্থ:', e); }
+  }
+
+  // ── ধাপ ১: প্রতিটি ব্লকের কাঁচা (শ্রিংকেজ ছাড়া) সংখ্যা বের করা — bh ও timely উভয়ই ব্লক-স্ন্যাপশট (r.blk) দিয়ে
+  // ফিল্টার করা হয়, বর্তমান ম্যাপিং দিয়ে নয় — তাই মাঝপথে টিউটর বদলালেও ঐ সময়ের ডেটা সঠিকভাবে ব্লকের সাথে থাকে ──
   const raw = ['A','B','C','D'].map(blk=>{
     const bh = (typeof bhRecords!=='undefined'?bhRecords:[]).filter(r=>r.blk===blk && typeof r.ts==='number' && r.ts>=periodStart && r.ts<=periodEnd);
     const plusTotal = bh.filter(r=>r.type==='plus').reduce((s,r)=>s+(r.pts||0),0);
@@ -9767,13 +10041,20 @@ async function srBuildScores(period){
     const perfN = bh.length;
     const rawPerf = (plusTotal+minusTotal)>0 ? (plusTotal/(plusTotal+minusTotal))*100 : 50;
 
-    const assignedId = Object.keys(ASST_BLOCK_MAP).find(k=>ASST_BLOCK_MAP[k]===blk);
-    const tl = timelyRecords.filter(r=>r.assignedId===assignedId && typeof r.ts==='number' && r.ts>=periodStart && r.ts<=periodEnd);
+    const assignedId = getAssignedIdAt(blk, periodEnd); // পিরিয়ড শেষে কে দায়িত্বে ছিলেন — "নাম" প্রদর্শনের জন্য
+    const tl = timelyRecords.filter(r=>r.blk===blk && typeof r.ts==='number' && r.ts>=periodStart && r.ts<=periodEnd);
     const onTimeCount = tl.filter(r=>r.onTime).length;
     const timelyN = tl.length;
     const rawTimely = timelyN>0 ? (onTimeCount/timelyN)*100 : 50;
 
-    return {blk, assignedId, plusTotal, minusTotal, perfN, rawPerf, timelyN, rawTimely, hasStuData: (plusTotal+minusTotal)>0, hasTimelyData: timelyN>0};
+    // স্বার্থের দ্বন্দ্ব সতর্কতা — নিজের নামেই বেশিরভাগ ইতিবাচক/নেতিবাচক রেকর্ড এন্ট্রি করা হয়েছে কিনা
+    const staffNameGuess = (USERS.asst.find(u=>u.id===assignedId)||{}).name;
+    const selfReportedN = staffNameGuess ? bh.filter(r=>r.by===staffNameGuess).length : 0;
+
+    // এই পিরিয়ডে ব্লকটি মাঝপথে হাত বদলেছে কিনা — থাকলে UI-তে সতর্কতা দেখানো হবে
+    const reassignedMidPeriod = ASST_BLOCK_HISTORY.some(h=>h.blk===blk && h.since>periodStart && h.since<periodEnd);
+
+    return {blk, assignedId, plusTotal, minusTotal, perfN, rawPerf, timelyN, rawTimely, hasStuData: (plusTotal+minusTotal)>0, hasTimelyData: timelyN>0, selfReportedN, reassignedMidPeriod, staleCount: staleCountByBlk[blk]||0};
   });
 
   // ── ধাপ ২: এই সময়কালের সামগ্রিক গড় (empirical prior) — শুধু যেসব ব্লকে আদৌ ডেটা আছে তা দিয়ে ──
@@ -9791,7 +10072,7 @@ async function srBuildScores(period){
 
     const diff = srDifficultyFactor(r.blk, periodStart);
     const adjustedPerf = Math.min(100, perfScore * diff.factor);
-    const automatedScore = 0.65*adjustedPerf + 0.35*timelyScore;
+    const automatedScore = RANK_CONFIG.staff.perfWeight*adjustedPerf + RANK_CONFIG.staff.timelyWeight*timelyScore;
 
     let obsRatings = [];
     Object.values(obsSnap||{}).forEach(entry=>{
@@ -9799,8 +10080,13 @@ async function srBuildScores(period){
     });
     const hasObsData = obsRatings.length > 0;
     const obsScore = hasObsData ? (obsRatings.reduce((s,x)=>s+x,0)/obsRatings.length)*20 : null;
+    const obsCount = obsRatings.length;
+    const needsMoreObs = obsCount < RANK_CONFIG.staff.minObsPerMonth;
 
-    const finalScore = hasObsData ? (0.9*automatedScore + 0.1*obsScore) : automatedScore;
+    const ow = RANK_CONFIG.staff.obsWeight;
+    const preStaleScore = hasObsData ? ((1-ow)*automatedScore + ow*obsScore) : automatedScore;
+    const stalePenalty = Math.min(RANK_CONFIG.staff.maxStalePenalty, r.staleCount*RANK_CONFIG.staff.stalePenaltyPerItem);
+    const finalScore = Math.max(0, preStaleScore - stalePenalty);
 
     return {
       blk: r.blk, assignedId: r.assignedId,
@@ -9810,10 +10096,13 @@ async function srBuildScores(period){
       adjustedPerf: Math.round(adjustedPerf),
       timelyScore: Math.round(timelyScore), timelyN: r.timelyN,
       automatedScore: Math.round(automatedScore),
-      obsScore: hasObsData ? Math.round(obsScore) : null,
-      difficultyFactor: diff.factor, difficultyHistN: diff.histN,
+      obsScore: hasObsData ? Math.round(obsScore) : null, obsCount, needsMoreObs,
+      difficultyFactor: diff.factor, difficultyHistN: diff.histN, manualWeight: diff.manualWeight,
       hasStuData: r.hasStuData, hasTimelyData: r.hasTimelyData, hasObsData,
       lowSample: r.perfN < SHRINK_K_PERF || r.timelyN < SHRINK_K_TIMELY,
+      selfReportedN: r.selfReportedN, selfReportRisk: r.perfN>0 && (r.selfReportedN/r.perfN)>0.5,
+      reassignedMidPeriod: r.reassignedMidPeriod,
+      staleCount: r.staleCount, stalePenalty,
       plusTotal: r.plusTotal, minusTotal: r.minusTotal,
       total: Math.round(finalScore),
     };
@@ -9821,6 +10110,7 @@ async function srBuildScores(period){
 }
 
 function goStaffRanking(){
+  if(typeof srLoadAssignmentHistory==="function") srLoadAssignmentHistory();
   const user = getSessionUser();
   const canManage = user.role==='super' || user.role==='admin';
   document.getElementById('sr-settings-btn').style.display = canManage ? 'flex' : 'none';
@@ -9844,11 +10134,12 @@ async function srRender(){
 
   const currentUser = getSessionUser();
   const scored = await srBuildScores(srPeriod);
-  scored.sort((a,b)=>b.total-a.total);
+  // deterministic টাই-ব্রেকিং: total → adjustedPerf → timelyScore → blk (নাম না, যাতে বর্ণানুক্রমিক পক্ষপাত না হয়)
+  scored.sort((a,b)=>(b.total-a.total)||(b.adjustedPerf-a.adjustedPerf)||(b.timelyScore-a.timelyScore)||a.blk.localeCompare(b.blk));
 
   const periodLbl = srPeriod==='year' ? 'বাৎসরিক' : 'এই মাস';
   document.getElementById('sr-top-hd').textContent = '🥇 '+periodLbl+' — শীর্ষ পারফরমার';
-  document.getElementById('sr-list-hd').textContent = '📋 '+periodLbl+' — সম্পূর্ণ র‍্যাংকিং';
+  document.getElementById('sr-list-hd').textContent = '📋 '+periodLbl+' — সম্পূর্ণ র‍্যাংকিং • কনফিগ v'+RANK_CONFIG.version;
 
   const top3 = [scored[1], scored[0], scored[2]];
   const crowns = ['🥈','🥇','🥉'];
@@ -9878,8 +10169,11 @@ async function srRender(){
       const warnParts = [];
       if(!s.hasStuData) warnParts.push('ছাত্র-রেকর্ড নেই');
       if(!s.hasTimelyData) warnParts.push('ইনপুট-লগ নেই');
-      if(!s.hasObsData) warnParts.push('পরিদর্শন নেই');
+      if(s.needsMoreObs) warnParts.push('পরিদর্শন অপর্যাপ্ত (ন্যূনতম মাসিক প্রয়োজন)');
       if(s.lowSample && s.hasStuData) warnParts.push('নমুনা কম (n='+bnDigits(s.perfN)+') — নিরপেক্ষ গড়ের দিকে সমন্বিত');
+      if(s.reassignedMidPeriod) warnParts.push('এই পিরিয়ডে ব্লক হাত বদল হয়েছে — ইতিহাস অনুযায়ী অ্যাট্রিবিউশন');
+      if(s.selfReportRisk) warnParts.push('স্বার্থের দ্বন্দ্ব ঝুঁকি: বেশিরভাগ রেকর্ড নিজেই এন্ট্রি করা');
+      if(s.staleCount>0) warnParts.push('🗒️ '+bnDigits(s.staleCount)+'টা রিপোর্ট ৩+ দিন ধরে বাকি (−'+bnDigits(s.stalePenalty)+' পয়েন্ট)');
       const warn = warnParts.length ?
         `<div style="font-size:10px;color:#a9822f;margin-top:4px;">⚠️ ${warnParts.join(', ')}</div>` : '';
       const isMe = s.assignedId === currentUser.id;
@@ -9908,12 +10202,15 @@ function srShowBreakdown(blk){
     let msg = s.name+' (ব্লক '+blk+') — বিস্তারিত স্কোর:\n\n';
     msg += '🥇 ছাত্র-পারফরম্যান্স — কাঁচা: '+s.rawPerf+'/১০০ (n='+s.perfN+' রেকর্ড, পজিটিভ '+s.plusTotal+' — নেগেটিভ '+s.minusTotal+')\n';
     msg += '   → নমুনা-সমন্বয়ের পর: '+s.perfScore+'/১০০ '+(s.perfN<SHRINK_K_PERF?'(নমুনা কম বলে গড়ের দিকে টানা হয়েছে)':'')+'\n';
-    msg += '⚖️ ব্লক কঠিনতা গুণক: '+s.difficultyFactor+'× (ঐতিহাসিক '+s.difficultyHistN+'টা রেকর্ড থেকে)\n';
+    msg += '⚖️ ব্লক কঠিনতা গুণক: '+s.difficultyFactor+'× (ঐতিহাসিক '+s.difficultyHistN+'টা রেকর্ড থেকে; ম্যানুয়াল ওজন মাত্র '+Math.round(s.manualWeight*100)+'%)\n';
     msg += '➡️ কঠিনতা-সমন্বিত পারফরম্যান্স: '+s.adjustedPerf+'/১০০\n\n';
     msg += '🕒 সময়মতো ইনপুট: '+s.timelyScore+'/১০০ (n='+s.timelyN+' এন্ট্রি)'+(s.timelyN<SHRINK_K_TIMELY?' (নমুনা কম)':'')+'\n\n';
-    msg += '⚙️ স্বয়ংক্রিয় স্কোর (৬৫:৩৫): '+s.automatedScore+'/১০০\n\n';
-    msg += '🔍 পরিদর্শন রেটিং: '+(s.obsScore!==null?s.obsScore+'/১০০':'তথ্য নেই')+'\n\n';
-    msg += '🏆 চূড়ান্ত স্কোর: '+s.total+'/১০০';
+    msg += '⚙️ স্বয়ংক্রিয় স্কোর ('+Math.round(RANK_CONFIG.staff.perfWeight*100)+':'+Math.round(RANK_CONFIG.staff.timelyWeight*100)+'): '+s.automatedScore+'/১০০\n\n';
+    msg += '🔍 পরিদর্শন রেটিং ('+s.obsCount+'টা, ওজন '+Math.round(RANK_CONFIG.staff.obsWeight*100)+'%): '+(s.obsScore!==null?s.obsScore+'/১০০':'তথ্য নেই')+(s.needsMoreObs?' ⚠️ অপর্যাপ্ত':'')+'\n\n';
+    if(s.reassignedMidPeriod) msg += '⚠️ এই পিরিয়ডে ব্লক হাত বদল হয়েছে — এসাইনমেন্ট-ইতিহাস অনুযায়ী অ্যাট্রিবিউট করা হয়েছে\n';
+    if(s.selfReportRisk) msg += '⚠️ স্বার্থের দ্বন্দ্ব: '+s.selfReportedN+'/'+s.perfN+' রেকর্ড নিজেই এন্ট্রি করেছেন\n';
+    if(s.staleCount>0) msg += '🗒️ "রিপোর্ট দেওয়া বাকি": '+s.staleCount+'টা রুটিন-অংশ ৩+ দিন ধরে অমীমাংসিত — পেনাল্টি −'+s.stalePenalty+' পয়েন্ট\n';
+    msg += '\n🏆 চূড়ান্ত স্কোর: '+s.total+'/১০০ (কনফিগ v'+RANK_CONFIG.version+')';
     alert(msg);
   });
 }
@@ -9988,12 +10285,26 @@ const RK_KPI=[
   {key:"class",  label:"ইউনিফর্ম",     max:6,  ico:"👔", color:"#8258c9"},
 ];
 
+// একটা নির্দিষ্ট তারিখে একজন ছাত্রের কোনো না কোনো ডেটাসেটে এন্ট্রি আছে কিনা — কভারেজ/প্রভিশনাল হিসাবের জন্য
+function rkHasDataOnDate(d, sid, namazData, ccData, ufData, acData){
+  if(namazData[d] && Object.values(namazData[d]).some(slot=>slot && slot[sid]!==undefined)) return true;
+  if(ccData[d] && ccData[d][sid]!==undefined) return true;
+  if(ufData[d] && ufData[d][sid]!==undefined) return true;
+  if(acData[d] && acData[d][sid]!==undefined) return true;
+  return false;
+}
+
 // নির্দিষ্ট সময়সীমার (মাস/বছর) জন্য সবার real স্কোর হিসাব — namaz/cleanliness/uniform/arabicClass Firebase থেকে + bhRecords ডিসিপ্লিনারি নেট
+// v2.0: প্রতিটি উপাদানে ডেটা-স্বল্পতায় প্রাতিষ্ঠানিক গড়ের দিকে Bayesian shrinkage (০ নয়), কভারেজ-ভিত্তিক প্রভিশনাল ফ্ল্যাগ,
+// deterministic টাই-ব্রেকিং চেইন + যৌথ র‍্যাংক, এবং ব্লক/সামগ্রিক পার্সেন্টাইল।
 async function rkBuildScoresReal(period){
   if(allStudents.length===0) assignRooms();
   const range = period==="year" ? fbYearRangeKeys() : fbMonthRangeKeys();
   const periodStart = new Date(range.start+"T00:00:00").getTime();
   const periodEnd   = new Date(range.end+"T23:59:59.999").getTime();
+  const periodDays  = Math.max(1, Math.round((periodEnd-periodStart)/86400000));
+  const minCov = period==="year" ? RANK_CONFIG.student.minCoverageDaysYear : RANK_CONFIG.student.minCoverageDaysMonth;
+  const K = RANK_CONFIG.student.componentShrinkK;
 
   const [namazData, ccData, ufData, acData] = await Promise.all([
     fbGetRange("namaz", range.start, range.end),
@@ -10006,11 +10317,12 @@ async function rkBuildScoresReal(period){
   const ccDates    = Object.keys(ccData||{}).filter(d=>ccData[d] && Object.keys(ccData[d]).length>0);
   const ufDates    = Object.keys(ufData||{}).filter(d=>ufData[d] && Object.keys(ufData[d]).length>0);
   const acDates    = Object.keys(acData||{}).filter(d=>acData[d] && Object.keys(acData[d]).length>0);
+  const allDates   = Array.from(new Set([...namazDates, ...ccDates, ...ufDates, ...acDates]));
 
-  const rows = allStudents.map(s=>{
+  // ── ধাপ ১: প্রতিটি ছাত্রের প্রতিটি উপাদানে কাঁচা (raw) অনুপাত + নমুনা-আকার বের করা ──
+  const raw = allStudents.map(s=>{
     const sid=s.serial;
 
-    // নামাজ — প্রতিদিন প্রতি ওয়াক্ত: ontime=১, late=০.৫, qaza/অনুপস্থিত=০
     let namazPts=0, namazSlots=0;
     namazDates.forEach(d=>{
       Object.keys(namazData[d]||{}).forEach(p=>{
@@ -10019,24 +10331,17 @@ async function rkBuildScoresReal(period){
         if(st==="ontime") namazPts+=1; else if(st==="late") namazPts+=0.5;
       });
     });
-    const namazScore = namazSlots>0 ? (namazPts/namazSlots)*29 : 0;
 
-    // পরিচ্ছন্নতা ও সকালের পড়া
     let cleanHit=0, studyHit=0;
     ccDates.forEach(d=>{
       const m=(ccData[d]||{})[sid];
       if(m && m.hygiene==="clean") cleanHit++;
       if(m && m.study==="studying") studyHit++;
     });
-    const cleanScore = ccDates.length>0 ? (cleanHit/ccDates.length)*18 : 0;
-    const studyScore = ccDates.length>0 ? (studyHit/ccDates.length)*24 : 0;
 
-    // ইউনিফর্ম
     let ufHit=0;
     ufDates.forEach(d=>{ if((ufData[d]||{})[sid]==="in_uniform") ufHit++; });
-    const classScore = ufDates.length>0 ? (ufHit/ufDates.length)*6 : 0;
 
-    // আরবি ক্লাস (উপস্থিতি ৫০% + পড়া দেওয়া ৫০%)
     let acPts=0;
     acDates.forEach(d=>{
       const m=(acData[d]||{})[sid];
@@ -10045,29 +10350,80 @@ async function rkBuildScoresReal(period){
         if(m.lesson==="lesson_done") acPts+=0.5;
       }
     });
-    const arabicScore = acDates.length>0 ? (acPts/acDates.length)*23 : 0;
 
-    const baseTotal = namazScore+studyScore+arabicScore+cleanScore+classScore;
-    const disc = bhNetDiscPoints(s.name, periodStart, periodEnd);
-    const total = Math.max(0, Math.min(100, Math.round(baseTotal + disc.net)));
+    const coverageDays = allDates.filter(d=>rkHasDataOnDate(d, sid, namazData, ccData, ufData, acData)).length;
 
     return {
-      ...s,
-      scores:{namaz:Math.round(namazScore),study:Math.round(studyScore),arabic:Math.round(arabicScore),clean:Math.round(cleanScore),class:Math.round(classScore)},
-      penalty:disc.minusTotal, bonus:disc.plusTotal+disc.monthlyBonus,
-      total,
+      s, sid, coverageDays,
+      namaz:{ratio: namazSlots>0?namazPts/namazSlots:null, n:namazSlots},
+      study:{ratio: ccDates.length>0?studyHit/ccDates.length:null, n:ccDates.length},
+      clean:{ratio: ccDates.length>0?cleanHit/ccDates.length:null, n:ccDates.length},
+      classU:{ratio: ufDates.length>0?ufHit/ufDates.length:null, n:ufDates.length},
+      arabic:{ratio: acDates.length>0?acPts/acDates.length:null, n:acDates.length},
     };
   });
 
-  // সামগ্রিক (institution-wide) র‍্যাংক
-  rows.sort((a,b)=>b.total-a.total);
-  rows.forEach((r,i)=>r.overallRank=i+1);
-  r_overallTotal = rows.length;
+  // ── ধাপ ২: প্রাতিষ্ঠানিক গড় (empirical prior) — যেসব ছাত্রের সেই উপাদানে আদৌ ডেটা আছে তা দিয়ে ──
+  const compKeys = ["namaz","study","clean","classU","arabic"];
+  const priors = {};
+  compKeys.forEach(k=>{
+    const withData = raw.filter(r=>r[k].ratio!==null);
+    priors[k] = withData.length ? withData.reduce((s,r)=>s+r[k].ratio,0)/withData.length : 0.5;
+  });
 
-  // ব্লক-ভিত্তিক র‍্যাংক
+  // ── ধাপ ৩: নমুনা-আকার অনুযায়ী শ্রিংক করে চূড়ান্ত স্কোর তৈরি — ডেটা না থাকলে ০ নয়, প্রাতিষ্ঠানিক গড়ের দিকে টানা ──
+  const maxes = {namaz:29, study:24, clean:18, classU:6, arabic:23};
+  const rows = raw.map(r=>{
+    const shrunk = {};
+    compKeys.forEach(k=>{
+      const raw_r = r[k].ratio===null ? priors[k] : r[k].ratio;
+      const n = r[k].n;
+      shrunk[k] = n>0 ? (raw_r*n + priors[k]*K) / (n+K) : priors[k];
+    });
+    const namazScore  = shrunk.namaz*maxes.namaz;
+    const studyScore  = shrunk.study*maxes.study;
+    const cleanScore  = shrunk.clean*maxes.clean;
+    const classScore  = shrunk.classU*maxes.classU;
+    const arabicScore = shrunk.arabic*maxes.arabic;
+
+    const baseTotal = namazScore+studyScore+arabicScore+cleanScore+classScore;
+    const disc = bhNetDiscPoints(r.s.name, periodStart, periodEnd);
+    const total = Math.max(0, Math.min(100, Math.round(baseTotal + disc.net)));
+
+    const provisional = r.coverageDays < minCov;
+    const coverageRatio = r.coverageDays/periodDays;
+    const confidence = coverageRatio>=0.8 ? "high" : (r.coverageDays>=minCov ? "medium" : "low");
+
+    return {
+      ...r.s,
+      scores:{namaz:Math.round(namazScore),study:Math.round(studyScore),arabic:Math.round(arabicScore),clean:Math.round(cleanScore),class:Math.round(classScore)},
+      penalty:disc.minusTotal, bonus:disc.plusTotal+disc.monthlyBonus,
+      discNet: disc.plusTotal+disc.monthlyBonus-disc.minusTotal,
+      total, coverageDays:r.coverageDays, periodDays, provisional, confidence,
+    };
+  });
+
+  // ── ধাপ ৪: টাই-ব্রেকিং চেইন — total → নামাজ স্কোর → ডিসিপ্লিনারি নেট → সিরিয়াল (সম্পূর্ণ deterministic) ──
+  const rkCompare=(a,b)=> (b.total-a.total) || (b.scores.namaz-a.scores.namaz) || (b.discNet-a.discNet) || ((a.serial||0)-(b.serial||0));
+
+  // সামগ্রিক (institution-wide) র‍্যাংক — total-এ টাই হলে যৌথ র‍্যাংক (standard competition ranking: 1,2,2,4...)
+  rows.sort(rkCompare);
+  rows.forEach((r,i)=>{
+    if(i>0 && rows[i-1].total===r.total){ r.overallRank=rows[i-1].overallRank; r.overallJoint=true; }
+    else { r.overallRank=i+1; r.overallJoint=false; }
+  });
+  r_overallTotal = rows.length;
+  rows.forEach(r=>{ r.overallPercentile = Math.round((1-(r.overallRank-1)/Math.max(1,r_overallTotal))*100); });
+
+  // ব্লক-ভিত্তিক র‍্যাংক (একই টাই-ব্রেকিং যুক্তি)
   ["A","B","C","D"].forEach(blk=>{
-    const grp=rows.filter(r=>(r.block||r.blk)===blk).sort((a,b)=>b.total-a.total);
-    grp.forEach((r,i)=>{ r.blockRank=i+1; r.blockSize=grp.length; });
+    const grp=rows.filter(r=>(r.block||r.blk)===blk).sort(rkCompare);
+    grp.forEach((r,i)=>{
+      if(i>0 && grp[i-1].total===r.total){ r.blockRank=grp[i-1].blockRank; r.blockJoint=true; }
+      else { r.blockRank=i+1; r.blockJoint=false; }
+      r.blockSize=grp.length;
+      r.blockPercentile = Math.round((1-(r.blockRank-1)/Math.max(1,grp.length))*100);
+    });
   });
 
   return rows;
@@ -10096,15 +10452,18 @@ async function rkRender(){
 
   const allScored = await rkBuildScoresReal(rkPeriod);
   let scored = rkCurrentFilter==="all" ? allScored.slice() : allScored.filter(s=>(s.block||s.blk)===rkCurrentFilter);
-  scored.sort((a,b)=>b.total-a.total);
+  // deterministic টাই-ব্রেকিং চেইন থেকে ইতিমধ্যে-নির্ধারিত র‍্যাংক অনুযায়ী সাজানো (index-এর উপর নির্ভর না করে)
+  const rankOf = s => rkCurrentFilter==="all" ? s.overallRank : s.blockRank;
+  scored.sort((a,b)=>rankOf(a)-rankOf(b));
 
   const periodLbl = rkPeriod==="year" ? "বাৎসরিক" : "এই মাস";
   const label=rkCurrentFilter==="all"?"সামগ্রিক":"ব্লক "+rkCurrentFilter;
   document.getElementById("rk-top-hd").textContent="🥇 "+periodLbl+" — "+label+" শীর্ষ তিনজন";
-  document.getElementById("rk-list-hd").textContent="📋 "+periodLbl+" — "+label+" সম্পূর্ণ র‍্যাংকিং ("+bnRK(scored.length)+" জন)";
+  document.getElementById("rk-list-hd").textContent="📋 "+periodLbl+" — "+label+" সম্পূর্ণ র‍্যাংকিং ("+bnRK(scored.length)+" জন) • কনফিগ v"+RANK_CONFIG.version;
 
-  // পডিয়াম — ১ম, ২য়, ৩য়
-  const top3=[scored[1],scored[0],scored[2]]; // মাঝে ১ম
+  // পডিয়াম — ১ম, ২য়, ৩য় (rank ১/২/৩ অনুযায়ী, যৌথ র‍্যাংক হলে একাধিক ছাত্র একই অবস্থানে থাকতে পারে)
+  const podOf = n => scored.find(s=>rankOf(s)===n);
+  const top3=[podOf(2), podOf(1), podOf(3)]; // মাঝে ১ম
   const crowns=["🥈","🥇","🥉"];
   const podCls=["second","first","third"];
   const podColors=["#5f5fc9","#a9822f","#3f7a4a"];
@@ -10116,14 +10475,15 @@ async function rkRender(){
       <div class="rk-pod-name">${s.name.split(" ")[0]}</div>
       <div class="rk-pod-class">${CLASS_BN[s.cls]}</div>
       <div class="rk-pod-score" style="color:${podColors[i]}">${bnRK(s.total)}</div>
-      <div class="rk-pod-rank" style="color:${podColors[i]}">${rankNums[i]}</div>
+      <div class="rk-pod-rank" style="color:${podColors[i]}">${rankNums[i]}${(rkCurrentFilter==="all"?s.overallJoint:s.blockJoint)?" (যৌথ)":""}</div>
     </div>`;
   }).join("");
 
-  // সম্পূর্ণ তালিকা — প্রতিটি ছাত্রের ব্লক-র‍্যাংক ও সামগ্রিক-র‍্যাংক পাশাপাশি
+  // সম্পূর্ণ তালিকা — প্রতিটি ছাত্রের ব্লক-র‍্যাংক, সামগ্রিক-র‍্যাংক, পার্সেন্টাইল ও ডেটা-কভারেজ ব্যাজ পাশাপাশি
   document.getElementById("rk-list").innerHTML=`<div class="rk-list-card">${
-    scored.map((s,i)=>{
-      const rank=i+1;
+    scored.map((s)=>{
+      const rank=rankOf(s);
+      const joint = rkCurrentFilter==="all" ? s.overallJoint : s.blockJoint;
       const scoreColor=s.total>=80?"#2f9e5c":s.total>=60?"#a9822f":"#c94545";
       const rankBg=rank===1?"background:linear-gradient(135deg,#f7ecd6,#c8c3ba);color:#a9822f":
                    rank===2?"background:#bfbfc3;color:#5f5fc9":
@@ -10132,12 +10492,15 @@ async function rkRender(){
       const medal=rank===1?"🥇":rank===2?"🥈":rank===3?"🥉":"";
       const blkColors={A:"#2f9e5c",B:"#8258c9",C:"#1f9797",D:"#a9822f"};
       const blk=s.block||s.blk;
+      const confColor = s.confidence==="high"?"#2f9e5c":s.confidence==="medium"?"#a9822f":"#c94545";
+      const confLbl = s.confidence==="high"?"উচ্চ ডেটা":s.confidence==="medium"?"মাঝারি ডেটা":"নিম্ন ডেটা";
       return `<div class="rk-row" onclick="showStudentProfile(${s.serial},'ranking')">
         <div class="rk-rank-num" style="${rankBg}">${medal||bnRK(rank)}</div>
         <div class="rk-info">
-          <div class="rk-name">${s.name}</div>
+          <div class="rk-name">${s.name}${joint?' <span style="font-size:10px;color:#8b98a3;font-weight:400;">(যৌথ)</span>':''}${s.provisional?' <span style="font-size:9px;padding:1px 6px;border-radius:8px;background:#fbeee0;color:#a9822f;font-weight:700;">প্রভিশনাল</span>':''}</div>
           <div class="rk-meta">${CLASS_BN[s.cls]} • ব্লক <span style="color:${blkColors[blk]}">${blk}</span> • রুম ${s.room}</div>
-          <div class="rk-meta" style="margin-top:2px;color:#a9822f">🏠 ব্লক: ${bnRK(s.blockRank)}/${bnRK(s.blockSize)} • 🌐 সামগ্রিক: ${bnRK(s.overallRank)}/${bnRK(r_overallTotal)}</div>
+          <div class="rk-meta" style="margin-top:2px;color:#a9822f">🏠 ব্লক: ${bnRK(s.blockRank)}/${bnRK(s.blockSize)} (শীর্ষ ${bnRK(s.blockPercentile)}%) • 🌐 সামগ্রিক: ${bnRK(s.overallRank)}/${bnRK(r_overallTotal)} (শীর্ষ ${bnRK(s.overallPercentile)}%)</div>
+          <div class="rk-meta" style="margin-top:2px;color:${confColor}">📊 ${confLbl} — ${bnRK(s.coverageDays)}/${bnRK(s.periodDays)} দিন ট্র্যাকড</div>
         </div>
         <div class="rk-score-col">
           <div class="rk-score" style="color:${scoreColor}">${bnRK(s.total)}</div>
@@ -10395,7 +10758,7 @@ async function ncBuildTodayIssues(){
     issues.push(...ncMetaIssues(id[sid], ID_META, 'id', null, nsIsReligionExempt(s)?['prayer']:null));
     issues.push(...ncMetaIssues(es[sid], ES_OPTIONS, 'es'));
     issues.push(...ncMetaIssues(nr[sid], NR_META, 'nr'));
-    if(!nsIsReligionExempt(s)) issues.push(...ncMetaIssues(ac[sid], AC_OPTIONS, 'ac'));
+    if(!nsIsReligionExempt(s) && ARABIC_ASSIGNMENT[sid]) issues.push(...ncMetaIssues(ac[sid], AC_OPTIONS, 'ac'));
     issues.push(...ncMetaIssues(scMarksData[sid], SC_META, 'sc'));
 
     if(issues.length>0) result.push({...s, issues});
@@ -12681,6 +13044,417 @@ const RP_FD_CATEGORIES = [
 ];
 let RP_FD_LIST_CACHE = {};
 
+// ══ "রিপোর্ট দেওয়া বাকি আছে" ══ — একজন হাউস টিউটর/আরবি শিক্ষকের সমগ্র মেয়াদে (ব্যবহারিকভাবে গত RP_LOOKBACK_DAYS দিন —
+// staff-এর প্রকৃত যোগদানের তারিখ ট্র্যাক করা হয় না বলে এটাই "লাইফটাইম"-এর ব্যবহারিক প্রক্সি) দৈনন্দিন রুটিনের
+// যেসব অংশে তিনি সম্পূর্ণ একবারও ইনপুট দেননি (পুরো দিন ফাঁকা) তার তালিকা — RP_FD_CATEGORIES-ই পুনর্ব্যবহার করা হচ্ছে।
+const RP_LOOKBACK_DAYS = 365;
+const RP_STALE_DAYS = 3; // এত দিন সমাধান (বাদ/পূরণ) না হলে KPI-তে নেগেটিভ প্রভাব পড়বে
+
+let rpActions = {}; // { itemKey: {status:'dismissed'|'filled', by, at, note} } — admin/super-এর সমাধান, Firebase-এ সংরক্ষিত
+let rpActionsLoaded = false;
+function rpLoadActions(){
+  if(rpActionsLoaded) return; rpActionsLoaded=true;
+  fbListen('reportPendingActions', data=>{
+    rpActions = data || {};
+    if(document.getElementById('page-report-pending')?.classList.contains('active') && rpCurrentView) rpOpenStaff(rpCurrentView.type, rpCurrentView.key);
+  });
+}
+
+function rpCategoriesFor(staffType){
+  return RP_FD_CATEGORIES.filter(c => staffType==='arabic' ? c.id==='arabic' : c.id!=='arabic');
+}
+function rpStudentsFor(staffType, staffKey){
+  if(allStudents.length===0) assignRooms();
+  if(staffType==='arabic') return allStudents.filter(s=>ARABIC_ASSIGNMENT[s.serial]===staffKey);
+  return allStudents.filter(s=>(s.block||s.blk)===staffKey);
+}
+
+// ক্যাটাগরির তালিকার জন্য একটা রেঞ্জের সব ডেটা একবারে fetch করা (একাধিক স্টাফের মধ্যে পুনর্ব্যবহারযোগ্য)
+async function rpFetchCategoryData(cats, startKey, endKey){
+  const dataByCategory = {};
+  await Promise.all(cats.map(async c=>{ dataByCategory[c.id] = await fbGetRange(c.path, startKey, endKey); }));
+  return dataByCategory;
+}
+
+// আগে থেকে fetch করা ডেটা থেকে (সিঙ্ক্রোনাসভাবে) একজন নির্দিষ্ট স্টাফের "রিপোর্ট বাকি" আইটেম বের করা
+function rpEvaluateMissing(staffType, staffKey, startKey, endKey, dataByCategory){
+  const cats = rpCategoriesFor(staffType);
+  const baseStudents = rpStudentsFor(staffType, staffKey);
+  if(baseStudents.length===0) return [];
+  const items = [];
+  const cursor = new Date(startKey+'T00:00:00');
+  const endDate = new Date(endKey+'T00:00:00');
+  while(cursor <= endDate){
+    const dKey = fbDateKey(cursor);
+    cats.forEach(c=>{
+      const students = c.studentsFilter ? baseStudents.filter(c.studentsFilter) : baseStudents;
+      if(students.length===0) return; // এই ক্যাটাগরির জন্য প্রযোজ্য কোনো ছাত্রই নেই (যেমন কেউ অসুস্থ না থাকলে sickfollowup)
+      const raw = (dataByCategory[c.id]||{})[dKey];
+      let dayData = raw;
+      if(c.dataAdapter) dayData = c.dataAdapter(raw||{});
+      if(c.prayer) dayData = (raw||{})[c.prayer];
+      const hasAny = dayData && students.some(s=>dayData[s.serial]!==undefined);
+      if(!hasAny){
+        const itemKey = staffType+'_'+staffKey+'_'+c.id+'_'+dKey;
+        items.push({itemKey, staffType, staffKey, catId:c.id, label:c.label, icon:c.icon, dateKey:dKey, startHour:c.startHour, startMin:c.startMin});
+      }
+    });
+    cursor.setDate(cursor.getDate()+1);
+  }
+  items.sort((a,b)=> a.dateKey===b.dateKey ? (a.startHour*60+a.startMin)-(b.startHour*60+b.startMin) : a.dateKey.localeCompare(b.dateKey));
+  return items;
+}
+
+// একজনের জন্য সুবিধাজনক wrapper — নিজেই fetch + evaluate করে (ডিফল্টে লাইফটাইম রেঞ্জ, বা rangeOverride দিলে সেই রেঞ্জ)
+async function rpBuildMissing(staffType, staffKey, rangeOverride){
+  const cats = rpCategoriesFor(staffType);
+  const today = new Date();
+  const lookbackStart = new Date(today); lookbackStart.setDate(lookbackStart.getDate()-RP_LOOKBACK_DAYS);
+  const yesterday = new Date(today); yesterday.setDate(yesterday.getDate()-1);
+  const yesterdayKey = fbDateKey(yesterday);
+  const startKey = rangeOverride ? rangeOverride.startKey : fbDateKey(lookbackStart);
+  const endKeyRaw = rangeOverride ? rangeOverride.endKey : yesterdayKey;
+  const endKey = endKeyRaw > yesterdayKey ? yesterdayKey : endKeyRaw; // আজকের হোস্টেল-দিন এখনো চলমান, তাই বাদ
+  if(endKey < startKey) return [];
+  const dataByCategory = await rpFetchCategoryData(cats, startKey, endKey);
+  return rpEvaluateMissing(staffType, staffKey, startKey, endKey, dataByCategory);
+}
+
+// সব হাউস টিউটর + সব আরবি শিক্ষকের জন্য একসাথে (একবারই ডেটা fetch করে) — অ্যাডমিন/সুপারের তালিকা-পেজের জন্য সাশ্রয়ী
+async function rpBuildMissingForAll(rangeOverride){
+  const today = new Date();
+  const lookbackStart = new Date(today); lookbackStart.setDate(lookbackStart.getDate()-RP_LOOKBACK_DAYS);
+  const yesterday = new Date(today); yesterday.setDate(yesterday.getDate()-1);
+  const yesterdayKey = fbDateKey(yesterday);
+  const startKey = rangeOverride ? rangeOverride.startKey : fbDateKey(lookbackStart);
+  const endKeyRaw = rangeOverride ? rangeOverride.endKey : yesterdayKey;
+  const endKey = endKeyRaw > yesterdayKey ? yesterdayKey : endKeyRaw;
+  if(endKey < startKey) return {};
+  const dataByCategory = await rpFetchCategoryData(RP_FD_CATEGORIES, startKey, endKey);
+  const result = {};
+  Object.keys(ASST_BLOCK_MAP).forEach(id=>{
+    const blk = ASST_BLOCK_MAP[id];
+    result['asst_'+blk] = rpEvaluateMissing('asst', blk, startKey, endKey, dataByCategory);
+  });
+  Object.keys(ARABIC_TEACHER_NAMES).forEach(tid=>{
+    result['arabic_'+tid] = rpEvaluateMissing('arabic', tid, startKey, endKey, dataByCategory);
+  });
+  return result;
+}
+
+// এখনো-অমীমাংসিত (dismiss/fill করা হয়নি) আইটেম শুধু
+function rpUnresolved(items){
+  return items.filter(it=>!rpActions[it.itemKey]);
+}
+// ৩+ দিন ধরে অমীমাংসিত — KPI-তে প্রভাব ফেলবে এমন আইটেম
+function rpStaleUnresolved(items){
+  const cutoff = fbDateKey(new Date(Date.now()-RP_STALE_DAYS*86400000));
+  return rpUnresolved(items).filter(it=>it.dateKey<=cutoff);
+}
+
+// ══ "রিপোর্ট দেওয়া বাকি আছে" পেজ — হাউস টিউটর/আরবি শিক্ষক শুধু নিজেরটা দেখেন, admin/super সবার দেখতে ও এডিট করতে পারেন ══
+let rpCurrentView = null; // admin/super কোন স্টাফের বিস্তারিত দেখছেন তা মনে রাখতে (dismiss/fill-এর পর রি-রেন্ডারের জন্য)
+
+async function goReportPending(){
+  if(typeof rpLoadActions==='function') rpLoadActions();
+  const user = getSessionUser();
+  if(user.role==='asst'){
+    await rpOpenStaff('asst', ASST_BLOCK_MAP[user.id]);
+  } else if(user.role==='arabic'){
+    await rpOpenStaff('arabic', user.id);
+  } else {
+    rpCurrentView = null;
+    showPage('report-pending');
+    await rpRenderStaffPicker();
+  }
+}
+
+// অ্যাডমিন/সুপারের জন্য — সব হাউস টিউটর ও আরবি শিক্ষকের তালিকা, কতজনের কতটা রিপোর্ট বাকি তা-সহ
+async function rpRenderStaffPicker(){
+  document.getElementById('rpp-title').textContent = '🗒️ রিপোর্ট দেওয়া বাকি আছে — সবাই';
+  document.getElementById('rpp-sub').textContent = 'গত ১ বছরের মধ্যে যেসব দিনের রুটিন রিপোর্ট একেবারেই দেওয়া হয়নি';
+  const wrap = document.getElementById('rpp-content');
+  wrap.innerHTML = '<div class="nc-empty">⏳ লোড হচ্ছে...</div>';
+
+  const missingMap = await rpBuildMissingForAll();
+  const staffList = [
+    ...Object.keys(ASST_BLOCK_MAP).map(id=>({type:'asst', key:ASST_BLOCK_MAP[id], name:(USERS.asst.find(u=>u.id===id)||{}).name||id})),
+    ...Object.keys(ARABIC_TEACHER_NAMES).map(id=>({type:'arabic', key:id, name:ARABIC_TEACHER_NAMES[id]})),
+  ];
+  const cutoff = fbDateKey(new Date(Date.now()-RP_STALE_DAYS*86400000));
+  wrap.innerHTML = staffList.map(st=>{
+    const items = missingMap[st.type+'_'+st.key] || [];
+    const unresolved = rpUnresolved(items);
+    const stale = unresolved.filter(it=>it.dateKey<=cutoff);
+    return `<div class="rk-list-card" style="margin-bottom:10px;">
+      <div class="rk-row" style="cursor:pointer;" onclick="rpOpenStaff('${st.type}','${st.key}')">
+        <div class="rk-rank-num" style="background:${stale.length>0?'#fbeee0':'#eef1f4'};color:${stale.length>0?'#c94545':'#a9822f'};">${st.type==='arabic'?'📖':'🌙'}</div>
+        <div class="rk-info">
+          <div class="rk-name">${st.name}${st.type==='asst'?' (ব্লক '+st.key+')':' (আরবি শিক্ষক)'}</div>
+          <div class="rk-meta">অমীমাংসিত: ${bnDigits(unresolved.length)}${stale.length>0?' • ⚠️ ৩+ দিনের পুরনো: '+bnDigits(stale.length):''}</div>
+        </div>
+        <div style="font-size:18px;color:#8b98a3;">›</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// একজন নির্দিষ্ট স্টাফের বিস্তারিত তালিকা — নিজে দেখলে শুধু-পাঠযোগ্য, admin/super দেখলে dismiss/fill অপশন-সহ
+async function rpOpenStaff(type, key){
+  const user = getSessionUser();
+  const canEdit = user.role==='admin' || user.role==='super';
+  rpCurrentView = {type, key};
+  const name = type==='arabic'
+    ? (ARABIC_TEACHER_NAMES[key]||key)
+    : ((USERS.asst.find(u=>u.id===Object.keys(ASST_BLOCK_MAP).find(id=>ASST_BLOCK_MAP[id]===key))||{}).name || ('ব্লক '+key));
+
+  document.getElementById('rpp-title').textContent = '🗒️ '+name+' — রিপোর্ট বাকি';
+  document.getElementById('rpp-sub').textContent = 'গত ১ বছরের মধ্যে যেসব দিনের রুটিন রিপোর্ট একেবারেই দেওয়া হয়নি (তারিখ অনুযায়ী)';
+  const wrap = document.getElementById('rpp-content');
+  wrap.innerHTML = '<div class="nc-empty">⏳ লোড হচ্ছে...</div>';
+  showPage('report-pending');
+
+  const items = await rpBuildMissing(type, key);
+  const cutoff = fbDateKey(new Date(Date.now()-RP_STALE_DAYS*86400000));
+  const unresolved = rpUnresolved(items);
+  const resolved = items.filter(it=>rpActions[it.itemKey]);
+
+  const backBtn = canEdit ? `<div onclick="rpCurrentView=null;rpRenderStaffPicker();" style="cursor:pointer;font-size:12px;color:#5c6f7a;margin-bottom:10px;">← সবার তালিকায় ফিরে যান</div>` : '';
+
+  if(!items.length){
+    wrap.innerHTML = backBtn + `<div style="text-align:center;padding:30px 16px;color:#2f9e5c;font-size:13px;">✅ কোনো অংশে রিপোর্ট বাকি নেই — চমৎকার!</div>`;
+    return;
+  }
+
+  const rowsHtml = unresolved.length ? `<div class="rk-list-card">`+unresolved.map(it=>{
+    const stale = it.dateKey <= cutoff;
+    return `<div class="rk-row" style="${stale?'background:#fbeee022;':''}">
+      <div class="rk-info">
+        <div class="rk-name">${it.icon} ${it.label}</div>
+        <div class="rk-meta">${it.dateKey}${stale?' <span style="color:#c94545;font-weight:700;">⚠️ ৩+ দিন — KPI-তে প্রভাব ফেলছে</span>':''}</div>
+      </div>
+      ${canEdit?`<div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;">
+        <div style="font-size:11px;font-weight:700;color:#c94545;cursor:pointer;padding:4px 8px;border:1px solid #c9454544;border-radius:8px;" onclick="rpDismiss('${it.itemKey}')">বাদ দিন</div>
+        <div style="font-size:11px;font-weight:700;color:#2f9e5c;cursor:pointer;padding:4px 8px;border:1px solid #2f9e5c44;border-radius:8px;" onclick="rpMarkFilled('${it.itemKey}')">পক্ষে পূরণ</div>
+      </div>`:''}
+    </div>`;
+  }).join('')+`</div>` : `<div style="text-align:center;padding:20px;color:#2f9e5c;font-size:13px;">✅ সব অমীমাংসিত রিপোর্ট সমাধান হয়ে গেছে!</div>`;
+
+  const resolvedHtml = resolved.length ? `<div class="section-header" style="margin-top:16px;">✅ সমাধান হয়েছে (${bnDigits(resolved.length)})</div><div class="rk-list-card">`+
+    resolved.map(it=>{
+      const act = rpActions[it.itemKey] || {};
+      return `<div class="rk-row"><div class="rk-info">
+        <div class="rk-name">${it.icon} ${it.label} — ${it.dateKey}</div>
+        <div class="rk-meta">${act.status==='dismissed'?'বাদ দেওয়া হয়েছে':'শিক্ষকের পক্ষে পূরণ করা হয়েছে'} — ${act.by||''}${act.note?(' — "'+act.note+'"'):''}</div>
+      </div></div>`;
+    }).join('')+`</div>` : '';
+
+  wrap.innerHTML = backBtn + rowsHtml + resolvedHtml;
+}
+
+// admin/super — তালিকা থেকে একটা নির্দিষ্ট আইটেম বাদ দেওয়া (যেমন ঐ ছাত্র/দিন আসলে প্রযোজ্য ছিল না)
+function rpDismiss(itemKey){
+  const user = getSessionUser();
+  if(!(user.role==='admin'||user.role==='super')) return;
+  const note = (typeof prompt==='function') ? (prompt('বাদ দেওয়ার কারণ লিখুন (ঐচ্ছিক):')||'') : '';
+  const rec = {status:'dismissed', by:user.name, at:Date.now(), note};
+  rpActions[itemKey] = rec;
+  fbSet('reportPendingActions/'+itemKey, rec);
+  if(rpCurrentView) rpOpenStaff(rpCurrentView.type, rpCurrentView.key);
+}
+
+// admin/super — সংশ্লিষ্ট শিক্ষকের পক্ষে তথ্য ইনপুট দেওয়া হয়েছে বলে চিহ্নিত করা (কারণ/বিবরণ বাধ্যতামূলক, অডিট-ট্রেইল হিসেবে থাকবে)
+function rpMarkFilled(itemKey){
+  const user = getSessionUser();
+  if(!(user.role==='admin'||user.role==='super')) return;
+  const note = (typeof prompt==='function') ? prompt('শিক্ষকের পক্ষে কী তথ্য/ব্যাখ্যা ইনপুট দেওয়া হলো? (আবশ্যক — নথিভুক্ত থাকবে)') : null;
+  if(!note){ alert('বিবরণ ছাড়া সংরক্ষণ করা যাবে না।'); return; }
+  const rec = {status:'filled', by:user.name, at:Date.now(), note};
+  rpActions[itemKey] = rec;
+  fbSet('reportPendingActions/'+itemKey, rec);
+  if(rpCurrentView) rpOpenStaff(rpCurrentView.type, rpCurrentView.key);
+}
+</script>
+
+<!-- ══ PAGE: রিপোর্ট দেওয়া বাকি আছে ══ -->
+<div id="page-report-pending" class="page" style="background:#faf8f2;min-height:100vh;padding-bottom:80px;">
+  <div class="topbar">
+    <div class="tb-back" onclick="goDashboard()">←</div>
+    <div class="tb-info"><div class="tb-title" id="rpp-title">🗒️ রিপোর্ট দেওয়া বাকি আছে</div><div class="tb-sub" id="rpp-sub">লোড হচ্ছে...</div></div>
+  </div>
+  <div id="rpp-content" style="padding:14px 16px;"></div>
+  <div style="height:20px;"></div>
+</div>
+
+<!-- ══ PAGE: আরবি শিক্ষক র‍্যাংকিং — শুধু আরবি শিক্ষকদের মধ্যে তুলনা, হাউস টিউটরদের সাথে মেশানো হয় না ══ -->
+<div id="page-arabic-ranking" class="page" style="background:#faf8f2;min-height:100vh;padding-bottom:80px;">
+  <div class="topbar">
+    <div class="tb-back" onclick="goDashboard()">←</div>
+    <div class="tb-info"><div class="tb-title">📖 আরবি শিক্ষক র‍্যাংকিং</div><div class="tb-sub" id="ar-sub">লোড হচ্ছে...</div></div>
+  </div>
+  <div class="rk-tabs" style="margin:14px 16px 0;">
+    <div class="rk-tab active" id="ar-period-month" onclick="arSetPeriod('month')">এই মাস</div>
+    <div class="rk-tab" id="ar-period-year" onclick="arSetPeriod('year')">বাৎসরিক</div>
+  </div>
+  <div class="section-header" id="ar-top-hd">🥇 শীর্ষ পারফরমার</div>
+  <div class="rk-top3" id="ar-top3"></div>
+  <div class="section-header" id="ar-list-hd">📋 সম্পূর্ণ র‍্যাংকিং</div>
+  <div id="ar-list"></div>
+  <div style="height:20px;"></div>
+</div>
+
+<script>
+// ══ আরবি শিক্ষক র‍্যাংকিং ইঞ্জিন — bhRecords(cat:'arabic', নিজের নির্ধারিত ছাত্র) থেকে পারফরম্যান্স +
+// "রিপোর্ট দেওয়া বাকি" মডিউল থেকে সম্পূর্ণতা/স্টেল-পেনাল্টি — সম্পূর্ণ স্বতন্ত্র পুল, হাউস টিউটরদের সাথে অতুলনীয় ══
+let arPeriod = 'month';
+
+async function arBuildScores(period){
+  if(allStudents.length===0) assignRooms();
+  const range = period==='year' ? fbYearRangeKeys() : fbMonthRangeKeys();
+  const periodStart = new Date(range.start+'T00:00:00').getTime();
+  const periodEnd   = new Date(range.end+'T23:59:59.999').getTime();
+  const teacherIds = Object.keys(ARABIC_TEACHER_NAMES);
+
+  // ── ধাপ ১: প্রতিটি আরবি শিক্ষকের কাঁচা ছাত্র-পারফরম্যান্স (উপস্থিতি + পড়া-সম্পন্ন, bhRecords cat:'arabic' থেকে) ──
+  const raw = teacherIds.map(tid=>{
+    const myStudentNames = new Set(allStudents.filter(s=>ARABIC_ASSIGNMENT[s.serial]===tid).map(s=>s.name.toUpperCase()));
+    const bh = (typeof bhRecords!=='undefined'?bhRecords:[]).filter(r=>r.cat==='arabic' && myStudentNames.has(r.stuName) && typeof r.ts==='number' && r.ts>=periodStart && r.ts<=periodEnd);
+    const plusTotal = bh.filter(r=>r.type==='plus').reduce((s,r)=>s+(r.pts||0),0);
+    const minusTotal = bh.filter(r=>r.type==='minus').reduce((s,r)=>s+(r.pts||0),0);
+    const perfN = bh.length;
+    const rawPerf = (plusTotal+minusTotal)>0 ? (plusTotal/(plusTotal+minusTotal))*100 : 50;
+    return {tid, plusTotal, minusTotal, perfN, rawPerf, hasStuData:(plusTotal+minusTotal)>0, studentCount: myStudentNames.size};
+  });
+
+  const withData = raw.filter(r=>r.hasStuData);
+  const priorPerf = withData.length ? withData.reduce((s,r)=>s+r.rawPerf,0)/withData.length : 50;
+
+  // ── ধাপ ২: রিপোর্ট-সম্পূর্ণতা — এই পিরিয়ডে মোট কতদিনের মধ্যে কতদিন রিপোর্ট একেবারেই দেওয়া হয়নি ──
+  const rpEndDate = new Date(Math.min(periodEnd, Date.now()-86400000)); // আজকে বাদ (চক্র চলমান)
+  const rpEndKey = fbDateKey(rpEndDate);
+  const periodStartDate = new Date(range.start+'T00:00:00');
+  const totalDays = rpEndKey >= range.start ? (Math.round((rpEndDate-periodStartDate)/86400000)+1) : 0;
+
+  let missingByTeacher = {};
+  if(totalDays>0 && typeof rpFetchCategoryData==='function' && typeof rpCategoriesFor==='function'){
+    try{
+      const arCats = rpCategoriesFor('arabic');
+      const arData = await rpFetchCategoryData(arCats, range.start, rpEndKey);
+      teacherIds.forEach(tid=>{ missingByTeacher[tid] = rpEvaluateMissing('arabic', tid, range.start, rpEndKey, arData); });
+    }catch(e){ console.error('আরবি র‍্যাংকিং: রিপোর্ট-সম্পূর্ণতা গণনা ব্যর্থ:', e); }
+  }
+
+  const K1 = RANK_CONFIG.arabic.shrinkKPerf, K2 = RANK_CONFIG.arabic.shrinkKCompleteness;
+
+  return raw.map(r=>{
+    const perfScore = (r.rawPerf*r.perfN + priorPerf*K1) / (r.perfN + K1);
+
+    const items = missingByTeacher[r.tid] || [];
+    const unresolvedDays = new Set((typeof rpUnresolved==='function'?rpUnresolved(items):items).map(it=>it.dateKey)).size;
+    const rawCompleteness = totalDays>0 ? Math.max(0, (1 - unresolvedDays/totalDays))*100 : 85;
+    const completenessScore = totalDays>0 ? (rawCompleteness*totalDays + 85*K2)/(totalDays+K2) : 85;
+
+    const automatedScore = RANK_CONFIG.arabic.perfWeight*perfScore + RANK_CONFIG.arabic.completenessWeight*completenessScore;
+
+    const staleCount = (typeof rpStaleUnresolved==='function') ? rpStaleUnresolved(items).length : 0;
+    const stalePenalty = Math.min(RANK_CONFIG.arabic.maxStalePenalty, staleCount*RANK_CONFIG.arabic.stalePenaltyPerItem);
+    const finalScore = Math.max(0, automatedScore - stalePenalty);
+
+    return {
+      tid: r.tid,
+      name: ARABIC_TEACHER_NAMES[r.tid] || r.tid,
+      studentCount: r.studentCount,
+      perfScore: Math.round(perfScore), perfN: r.perfN, rawPerf: Math.round(r.rawPerf),
+      completenessScore: Math.round(completenessScore), totalDays,
+      automatedScore: Math.round(automatedScore),
+      hasStuData: r.hasStuData,
+      lowSample: r.perfN < K1,
+      noAssignedStudents: r.studentCount===0,
+      staleCount, stalePenalty,
+      plusTotal: r.plusTotal, minusTotal: r.minusTotal,
+      total: Math.round(finalScore),
+    };
+  });
+}
+
+function goArabicRanking(){
+  arSetPeriod('month');
+  showPage('arabic-ranking');
+}
+
+function arSetPeriod(period){
+  arPeriod = period;
+  document.getElementById('ar-period-month').classList.toggle('active', period==='month');
+  document.getElementById('ar-period-year').classList.toggle('active', period==='year');
+  arRender();
+}
+
+async function arRender(){
+  document.getElementById('ar-list').innerHTML = '<div style="text-align:center;padding:36px 16px;color:#8b98a3">⏳ লোড হচ্ছে...</div>';
+  document.getElementById('ar-top3').innerHTML = '';
+
+  const currentUser = getSessionUser();
+  const scored = await arBuildScores(arPeriod);
+  // deterministic টাই-ব্রেকিং: total → perfScore → completenessScore → নাম
+  scored.sort((a,b)=>(b.total-a.total)||(b.perfScore-a.perfScore)||(b.completenessScore-a.completenessScore)||a.name.localeCompare(b.name));
+
+  const periodLbl = arPeriod==='year' ? 'বাৎসরিক' : 'এই মাস';
+  document.getElementById('ar-sub').textContent = periodLbl+' — শুধু আরবি শিক্ষকদের মধ্যে তুলনা • কনফিগ v'+RANK_CONFIG.version;
+  document.getElementById('ar-top-hd').textContent = '🥇 '+periodLbl+' — শীর্ষ পারফরমার';
+  document.getElementById('ar-list-hd').textContent = '📋 '+periodLbl+' — সম্পূর্ণ র‍্যাংকিং';
+
+  const top3 = [scored[1], scored[0], scored[2]];
+  const crowns = ['🥈','🥇','🥉'];
+  const podCls = ['second','first','third'];
+  const podColors = ['#5f5fc9','#a9822f','#3f7a4a'];
+  const rankNums = ['২য়','১ম','৩য়'];
+  document.getElementById('ar-top3').innerHTML = top3.map((s,i)=>{
+    if(!s) return '<div></div>';
+    return `<div class="rk-podium ${podCls[i]}">
+      <div class="rk-crown">${crowns[i]}</div>
+      <div class="rk-pod-name">${s.name.split(' ')[0]}</div>
+      <div class="rk-pod-class">📖 আরবি শিক্ষক</div>
+      <div class="rk-pod-score" style="color:${podColors[i]}">${bnDigits(s.total)}</div>
+      <div class="rk-pod-rank" style="color:${podColors[i]}">${rankNums[i]}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('ar-list').innerHTML = `<div class="rk-list-card">${
+    scored.map((s,i)=>{
+      const rank = i+1;
+      const scoreColor = s.total>=80?'#2f9e5c':s.total>=60?'#a9822f':'#c94545';
+      const rankBg = rank===1?'background:linear-gradient(135deg,#f7ecd6,#c8c3ba);color:#a9822f':
+                     rank===2?'background:#bfbfc3;color:#5f5fc9':
+                     rank===3?'background:#e6f2e8;color:#3f7a4a':
+                     'background:#e2dbc7;color:#8b98a3';
+      const medal = rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':'';
+      const warnParts = [];
+      if(s.noAssignedStudents) warnParts.push('এখনো কোনো ছাত্র বণ্টন করা হয়নি');
+      if(!s.hasStuData && !s.noAssignedStudents) warnParts.push('এই পিরিয়ডে কোনো রেকর্ড নেই');
+      if(s.lowSample && s.hasStuData) warnParts.push('নমুনা কম (n='+bnDigits(s.perfN)+') — নিরপেক্ষ গড়ের দিকে সমন্বিত');
+      if(s.staleCount>0) warnParts.push('🗒️ '+bnDigits(s.staleCount)+'টা রিপোর্ট ৩+ দিন ধরে বাকি (−'+bnDigits(s.stalePenalty)+' পয়েন্ট)');
+      const warn = warnParts.length ? `<div style="font-size:10px;color:#a9822f;margin-top:4px;">⚠️ ${warnParts.join(', ')}</div>` : '';
+      const isMe = s.tid === currentUser.id;
+      const meTag = isMe ? `<div style="font-size:10px;color:#1f7a63;font-weight:700;margin-top:4px;">👤 আপনি এখানে</div>` : '';
+      return `<div class="rk-row" style="${isMe?'border:1.5px solid #1f7a63;background:#bdc2c1;':''}">
+        <div class="rk-rank-num" style="${rankBg}">${medal||bnDigits(rank)}</div>
+        <div class="rk-info">
+          <div class="rk-name">${s.name}</div>
+          <div class="rk-meta">নির্ধারিত ছাত্র: ${bnDigits(s.studentCount)} জন</div>
+          <div class="rk-meta" style="margin-top:2px;color:#8aa0b3;">পারফরম্যান্স ${bnDigits(s.perfScore)} • রিপোর্ট-সম্পূর্ণতা ${bnDigits(s.completenessScore)}</div>
+          ${warn}${meTag}
+        </div>
+        <div class="rk-score-col">
+          <div class="rk-score" style="color:${scoreColor}">${bnDigits(s.total)}</div>
+          <div class="rk-score-bar"><div class="rk-score-fill" style="width:${s.total}%;background:${scoreColor}"></div></div>
+        </div>
+      </div>`;
+    }).join('')
+  }</div>`;
+}
+</script>
+
+<script>
 function goRoutineFullReport(){
   rpFullDayRender();
   showPage('routine-report-full');
