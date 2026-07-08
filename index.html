@@ -5732,6 +5732,7 @@ if(typeof srLoadTimelyFromFirebase==="function") srLoadTimelyFromFirebase();
 if(typeof srLoadAssignmentHistory==="function") srLoadAssignmentHistory();
 if(typeof acLoadAssignments==="function") acLoadAssignments();
 if(typeof rpLoadActions==="function") rpLoadActions();
+if(typeof rpStuLoadActions==="function") rpStuLoadActions();
 if(typeof ogLoadFromFirebase==="function") ogLoadFromFirebase();
 
 // ── নতুন ছাত্র ভর্তি / বিদায়ী ছাত্র ডিলিট — Firebase-এ সিঙ্ক থাকে ──
@@ -6327,12 +6328,8 @@ function bhNetDiscPoints(stuName, startTs, endTs){
 }
 
 let bhRecords=[
-  {id:1,stuName:"MD ABDULLAH",cls:"X",blk:"D",cat:"escape",desc:"রাত ১১টায় হোস্টেল থেকে বের হওয়ার চেষ্টা করেছে।",type:"minus",pts:15,time:"আজ রাত ১১:০০",by:"নিজাম উদ্দিন স্যার",ts:Date.now()},
-  {id:2,stuName:"RAKIBUL MUNSHI",cls:"VIII",blk:"B",cat:"fight",desc:"ডাইনিংয়ে অন্য ছাত্রের সাথে মারামারি করেছে।",type:"minus",pts:7,time:"আজ দুপুর ১:০০",by:"আবুল হাসান স্যার",ts:Date.now()},
-  {id:3,stuName:"ARHAM HASAN AKASH",cls:"X",blk:"D",cat:"good",desc:"সপ্তাহের সেরা ছাত্র — সব নামাজ পড়েছে।",type:"plus",pts:5,time:"গতকাল",by:"আবু জাহিদ স্যার",ts:Date.now()-86400000},
-  {id:4,stuName:"MD.ADOL",cls:"IX",blk:"C",cat:"namaz",desc:"ফজর নামাজে অনুপস্থিত ছিল।",type:"minus",pts:2,time:"আজ সকাল",by:"শরিফুল ইসলাম স্যার",ts:Date.now()},
 ];
-let bhFilterVal="all", bhPtsType="minus", bhNextId=5;
+let bhFilterVal="all", bhPtsType="minus", bhNextId=1;
 let bhFbLoaded=false;
 
 // পূর্বে Firebase-এ push হওয়া কিন্তু কখনো ফেরত না-পড়া আচরণ রেকর্ডগুলো লোড করা (রিলোডে যেন হারিয়ে না যায়)
@@ -13229,6 +13226,21 @@ const RP_FD_CATEGORIES = [
   {id:'nightfinal',  label:'রাতের হাজিরা',                  icon:'🛌', startHour:22, startMin:0,  path:'nightFinalCheck',                 meta:()=>NFC_META},
 ];
 let RP_FD_LIST_CACHE = {};
+let rpFdCurrentListId = null;
+
+// ── একজন-দুইজন ছাত্রের রিপোর্ট বাকি থাকলে (কোনো ক্যাটাগরির "চিহ্নিত হয়নি" তালিকায়) সেটা এখন
+// ক্লিকযোগ্য — হোস্টেল সুপার/অ্যাডমিন সরাসরি সেখান থেকেই "বাদ দিন" বা "সমাধান করুন" চেপে সমাধান করে দিতে পারবেন ──
+let rpStuActions = {}; // { itemKey: {status:'dismissed'|'filled', by, at, note} } — Firebase-এ সংরক্ষিত
+let rpStuActionsLoaded = false;
+function rpStuLoadActions(){
+  if(rpStuActionsLoaded) return; rpStuActionsLoaded=true;
+  fbListen('reportPendingStudentActions', data=>{
+    rpStuActions = data || {};
+    if(rpFdCurrentListId && document.getElementById('nsOptionsOverlay') && !document.getElementById('nsOptionsOverlay').classList.contains('hide')){
+      rpFdShowList(rpFdCurrentListId);
+    }
+  });
+}
 
 // ══ "রিপোর্ট দেওয়া বাকি আছে" ══ — এই ফিচার চালুর তারিখ (৮ জুলাই ২০২৬) থেকে আজ পর্যন্ত, একজন হাউস টিউটর/আরবি
 // শিক্ষকের দৈনন্দিন রুটিনের যেসব অংশে তিনি সম্পূর্ণ একবারও ইনপুট দেননি (পুরো দিন ফাঁকা — কতগুলো "রুটিন ইনপুট দেননি"
@@ -13680,18 +13692,67 @@ function rpFdGroup(students, markData, metaObj){
 function rpFdShowList(listId){
   const item = RP_FD_LIST_CACHE[listId];
   if(!item) return;
+  rpFdCurrentListId = listId;
   document.getElementById('nsOptTitle').textContent = item.title;
   const listEl = document.getElementById('nsOptList');
+  const user = (typeof getSessionUser==='function') ? getSessionUser() : null;
+  const canResolve = !!(item.isUnmarked && user && (user.role==='admin' || user.role==='super'));
+
   if(!item.students.length){
     listEl.innerHTML = '<div style="text-align:center;color:#5c6f7a;font-size:13px;padding:10px 0;">কোনো ছাত্র নেই</div>';
-  } else {
+  } else if(!canResolve){
     listEl.innerHTML = item.students.map(s=>`
       <div class="ns-opt-btn" style="cursor:pointer" onclick="nsCloseOptions(); showStudentProfile(${s.serial},'noncompliance')">
         <span class="ns-opt-txt">${s.name}</span>
         <span style="font-size:11px;color:#5c6f7a;">${CLASS_BN[s.cls]||s.cls} • রুম ${s.room}</span>
       </div>`).join('');
+  } else {
+    // admin/super — একজন-দুইজন ছাত্রের রিপোর্ট বাকি থাকলে এখানেই "বাদ দিন"/"সমাধান করুন" চেপে সমাধান করা যাবে
+    listEl.innerHTML = item.students.map(s=>{
+      const itemKey = 'stu_'+item.catId+'_'+item.blk+'_'+item.dateKey+'_'+s.serial;
+      const act = rpStuActions[itemKey];
+      const nameRow = `<div style="display:flex;justify-content:space-between;width:100%;cursor:pointer;" onclick="nsCloseOptions(); showStudentProfile(${s.serial},'noncompliance')">
+          <span class="ns-opt-txt">${s.name}</span>
+          <span style="font-size:11px;color:#5c6f7a;">${CLASS_BN[s.cls]||s.cls} • রুম ${s.room}</span>
+        </div>`;
+      if(act){
+        return `<div class="ns-opt-btn" style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;">
+          ${nameRow}
+          <div style="font-size:11px;color:#2f9e5c;">${act.status==='dismissed'?'✅ বাদ দেওয়া হয়েছে':'✅ সমাধান করা হয়েছে'} — ${sgEsc(act.by||'')}${act.note?(' — "'+sgEsc(act.note)+'"'):''}</div>
+        </div>`;
+      }
+      return `<div class="ns-opt-btn" style="display:flex;flex-direction:column;align-items:flex-start;gap:6px;">
+        ${nameRow}
+        <div style="display:flex;gap:8px;">
+          <span style="font-size:11px;font-weight:700;color:#c94545;cursor:pointer;padding:4px 8px;border:1px solid #c9454544;border-radius:8px;" onclick="rpStuDismiss('${itemKey}','${listId}')">বাদ দিন</span>
+          <span style="font-size:11px;font-weight:700;color:#2f9e5c;cursor:pointer;padding:4px 8px;border:1px solid #2f9e5c44;border-radius:8px;" onclick="rpStuMarkFilled('${itemKey}','${listId}')">সমাধান করুন</span>
+        </div>
+      </div>`;
+    }).join('');
   }
   document.getElementById('nsOptionsOverlay').classList.remove('hide');
+}
+
+// admin/super — নির্দিষ্ট একজন ছাত্রের বাকি-থাকা রিপোর্ট-আইটেম বাদ দেওয়া (প্রযোজ্য ছিল না বলে চিহ্নিত করা)
+function rpStuDismiss(itemKey, listId){
+  const user = getSessionUser();
+  if(!(user.role==='admin'||user.role==='super')) return;
+  const note = (typeof prompt==='function') ? (prompt('বাদ দেওয়ার কারণ লিখুন (ঐচ্ছিক):')||'') : '';
+  const rec = {status:'dismissed', by:user.name, at:Date.now(), note};
+  rpStuActions[itemKey] = rec;
+  fbSet('reportPendingStudentActions/'+itemKey, rec);
+  rpFdShowList(listId);
+}
+// admin/super — নির্দিষ্ট একজন ছাত্রের বাকি-থাকা রিপোর্ট-আইটেম হাউজ টিউটরের পক্ষে পূরণ/সমাধান করা (কারণ/বিবরণ বাধ্যতামূলক)
+function rpStuMarkFilled(itemKey, listId){
+  const user = getSessionUser();
+  if(!(user.role==='admin'||user.role==='super')) return;
+  const note = (typeof prompt==='function') ? prompt('এই ছাত্রের ব্যাপারে কী তথ্য/ব্যাখ্যা ইনপুট দেওয়া হলো? (আবশ্যক — নথিভুক্ত থাকবে)') : null;
+  if(!note){ alert('বিবরণ ছাড়া সংরক্ষণ করা যাবে না।'); return; }
+  const rec = {status:'filled', by:user.name, at:Date.now(), note};
+  rpStuActions[itemKey] = rec;
+  fbSet('reportPendingStudentActions/'+itemKey, rec);
+  rpFdShowList(listId);
 }
 
 // ── খেলাধুলা — ব্লক-ভিত্তিক (ছাত্র-ভিত্তিক নয়) টিকচিহ্নের প্রতিবেদন অংশ ──
@@ -13776,7 +13837,7 @@ async function rpFullDayRender(){
       });
       if(unmarked.length>0){
         const listId = cat.id+'_'+blk+'_unmarked';
-        RP_FD_LIST_CACHE[listId] = {title: cat.icon+' '+cat.label+' — ব্লক '+blk+' — এখনো চিহ্নিত হয়নি ('+unmarked.length+' জন)', students: unmarked};
+        RP_FD_LIST_CACHE[listId] = {title: cat.icon+' '+cat.label+' — ব্লক '+blk+' — এখনো চিহ্নিত হয়নি ('+unmarked.length+' জন)', students: unmarked, isUnmarked:true, catId:cat.id, blk, dateKey};
         html += `<span class="rpfd-stat-chip muted" onclick="rpFdShowList('${listId}')">⬜ চিহ্নিত হয়নি: <b>${bnDigits(unmarked.length)}</b></span>`;
       }
       html += `</div></div>`;
