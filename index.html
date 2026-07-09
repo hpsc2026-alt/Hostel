@@ -5818,6 +5818,7 @@ window.addEventListener('load', function(){
   if(typeof rpLoadActions==="function") rpLoadActions();
   if(typeof rpStuLoadActions==="function") rpStuLoadActions();
   if(typeof ogLoadFromFirebase==="function") ogLoadFromFirebase();
+  if(typeof attLoadFromFirebase==="function") attLoadFromFirebase();
 });
 
 
@@ -5984,7 +5985,7 @@ function render(){
     const toTc=n=>n.split(' ').map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ');
     studs.forEach((s, i) => {
       const onLeaveNow = (typeof lvRecords!=='undefined') && (typeof lvIsActiveToday==='function') && lvRecords.some(r=>r.stuSerial===s.serial && lvIsActiveToday(r));
-      const effStatus = onLeaveNow ? 'ss-leave' : s.status;
+      const effStatus = onLeaveNow ? 'ss-leave' : getRealStudentStatus(s.serial);
       const ico=stIco[effStatus]||'🟢';
       const txt=stTxt[effStatus]||'উপস্থিত';
       const cls=stCls[effStatus]||'ss-present';
@@ -6674,11 +6675,35 @@ function bhShowToast(msg,type){
 <script>
 const bnA=n=>String(n).replace(/\d/g,x=>"০১২৩৪৫৬৭৮৯"[x]);
 let attStatus={};
+let attFbLoaded=false;
+
+// আগে আজকের জমা দেওয়া হাজিরা (attStatus) Firebase থেকে কখনো ফেরত লোড হতো না — শুধু লেখা
+// (fbSet) হতো। ফলে পেজ রিফ্রেশ করলে বা অন্য ডিভাইস থেকে ঢুকলে সেদিনের জমা দেওয়া হাজিরা
+// হারিয়ে যেত, সবকিছু আবার ডিফল্ট "উপস্থিত" দেখাতো। এখন থেকে এটা রিয়েল-টাইমে সিঙ্ক হবে।
+function attLoadFromFirebase(){
+  if(attFbLoaded) return; attFbLoaded=true;
+  fbListen('attendance/'+fbTodayKey(), data=>{
+    attStatus = {...attStatus, ...(data||{})};
+    if(document.getElementById('page-attendance')?.classList.contains('active') && typeof attRender==='function') attRender();
+    if(document.getElementById('page-students')?.classList.contains('active') && typeof render==='function') render();
+  });
+}
+
+// ছাত্র তালিকা/প্রোফাইলে দেখানোর জন্য একজন ছাত্রের প্রকৃত বর্তমান অবস্থা বের করা —
+// আগে এটা ছাত্রের ক্রম-অনুযায়ী একটা স্থির/কাল্পনিক প্যাটার্ন (STATUS_LIST) থেকে আসতো,
+// আজকের প্রকৃত জমা দেওয়া হাজিরার সাথে কোনো সম্পর্কই ছিল না। এখন আসল attStatus থেকে আসবে।
+function getRealStudentStatus(serial){
+  const real = attStatus[serial]; // 'present' | 'absent' | 'leave' (হাজিরা পেজ থেকে সেভ করা)
+  if(real==='absent') return 'ss-absent';
+  if(real==='leave') return 'ss-leave';
+  return 'ss-present'; // ডিফল্ট, বা 'present' হলে
+}
 
 function goAttendance(){ attInit(); showPage("attendance"); }
 
 function attInit(){
   if(allStudents.length===0) assignRooms();
+  attLoadFromFirebase();
   // সব ছাত্রকে ডিফল্ট "present" দিই
   allStudents.forEach(s=>{ if(!attStatus[s.serial]) attStatus[s.serial]="present"; });
   const d=new Date();
@@ -8261,7 +8286,7 @@ function showStudentProfile(serial, fromPage){
     "ss-leave":  {txt:"🏠 বাড়িতে আছে",  cls:"stup-chip-leave"},
   };
   const onLeaveNow = (typeof lvRecords!=="undefined") && (typeof lvIsActiveToday==="function") && lvRecords.some(r=>r.stuSerial===s.serial && lvIsActiveToday(r));
-  const effStatusForChip = onLeaveNow ? "ss-leave" : s.status;
+  const effStatusForChip = onLeaveNow ? "ss-leave" : getRealStudentStatus(s.serial);
   const chip=statusChips[effStatusForChip]||{txt:"🟢 হোস্টেলে আছে",cls:"stup-chip-present"};
   const chipEl=document.getElementById("stup-status-chip");
   if(chipEl){ chipEl.textContent=chip.txt; chipEl.className="stup-chip "+chip.cls; }
