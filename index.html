@@ -5749,6 +5749,149 @@ const BLOCKS = {
 const CLASS_BN = {'IV':'চতুর্থ','V':'পঞ্চম','VI':'ষষ্ঠ','VII':'সপ্তম','VIII':'অষ্টম','IX':'নবম','X':'দশম'};
 const STATUS_LIST = ['ss-present','ss-present','ss-present','ss-present','ss-present','ss-leave','ss-absent'];
 
+// ══════════════════════════════════════════════════════════════════════
+// ⚠️ গুরুত্বপূর্ণ ফিক্স (৯ জুলাই ২০২৬): এতদিন প্রতিটি ছাত্রের "serial" নম্বর
+// assignRooms() প্রতিবার চলার সময় STUDENTS_BY_CLASS অ্যারের বর্তমান ক্রম
+// অনুযায়ী নতুন করে গণনা হতো (globalSerial++)। কিন্তু ছুটি/নামাজ/অভিযোগ/হাজিরা —
+// সব রেকর্ডই Firebase-এ এই serial নম্বর দিয়ে সংরক্ষিত থাকে। ফলে যখনই
+// STUDENTS_BY_CLASS-এ কোনো ছাত্র যোগ/বাদ/পুনর্বিন্যাস হতো, তখন সবার serial
+// শিফট হয়ে যেত — কিন্তু আগে সেভ করা রেকর্ডের stuSerial একই থেকে যেত। এর
+// ফলে পুরনো একটা রেকর্ড (যেমন ছুটি) হঠাৎ ভুল ছাত্রের নামে "লেগে" যেত —
+// এভাবেই এমডি ওমর ফারুক তালহাকে অকারণে "বাড়িতে আছে" দেখাচ্ছিল, এবং একই
+// কারণে হাউস টিউটরের নামাজ/দৈনন্দিন-তথ্য-ইনপুট তালিকা থেকে তাকে বাদ
+// দেওয়া হচ্ছিল (ঐ তালিকা থেকে "ছুটিতে থাকা" ছাত্রদের স্বয়ংক্রিয়ভাবে
+// বাদ দেওয়া হয়)।
+//
+// সমাধান: প্রতিটি ছাত্রের জন্য একটা স্থায়ী (fixed) ID — নিচের
+// STUDENT_ID_MAP-এ আজকের হিসাব অনুযায়ী প্রতিটি ছাত্রের বর্তমান serial
+// "জমাট" (snapshot) করে রাখা হলো, যাতে বিদ্যমান Firebase ডেটা অক্ষত
+// থাকে। এখন থেকে STUDENTS_BY_CLASS-এ যত পরিবর্তনই হোক না কেন, এই ম্যাপে
+// থাকা প্রতিটি ছাত্রের ID অপরিবর্তিত থাকবে। নতুন কোনো ছাত্র (যার নাম এই
+// ম্যাপে নেই) যোগ হলে getStudentId() তার নাম থেকে একটা স্থায়ী hash-ভিত্তিক
+// ID বানিয়ে দেবে (১০০০+ রেঞ্জে, যাতে বিদ্যমান কারো সাথে সংঘর্ষ না হয়) —
+// পরবর্তীতে সুবিধাজনক সময়ে সেটাকেও এই ম্যাপে স্থায়ীভাবে যোগ করে দেওয়া ভালো।
+// ══════════════════════════════════════════════════════════════════════
+const STUDENT_ID_MAP = {
+  "ARHAM RAFIN":1,
+  "MD.MURSALIN SHEIKH":2,
+  "ABDULLAH AL TAMIM":3,
+  "ALIF ISLAM":4,
+  "ARIFUL PRAMANIK":5,
+  "ASIBUL ISLAM LIHAD CHOWDURY":6,
+  "HABIBUR RAHMAN BEPARI":7,
+  "HUJAIFA BIN SALMAN":8,
+  "SOHAN KHAN":9,
+  "TAWHID MAHTAB":10,
+  "MIR TANZIBUL ISLAM":11,
+  "HASNAT IMTIAZ TASHIN":12,
+  "MUBASHIR RAHMAN NAFIJ SIKDER":13,
+  "MD. AL AMIN":14,
+  "IFAT UDDIN":15,
+  "MD. SALMAN ALI KHAN":16,
+  "ROOZBEH ZAIN":17,
+  "TANJIM ISLAM TAMIM":18,
+  "ABU BOKKOR SHEIKH":19,
+  "AL MUBASSIR MUNSHI":20,
+  "BAYEJID SHEIKH":21,
+  "UDVAB DAS ARNOB":22,
+  "MD SOHANUR RAHMAN SIYAM":23,
+  "ABIR KHAN":24,
+  "SHAMSUL ALAM JOBAYER":25,
+  "SAKIBUL HASAN":26,
+  "MAHIDUL BISWAS":27,
+  "JISAN":28,
+  "MD NAZMUL SAKIB":29,
+  "ANTOR KUMAR GHOSH":30,
+  "MUBASSHIR IMAN":31,
+  "HOSSAIN FIROZ":32,
+  "AL RAFI":33,
+  "MD.ABDULLAH SHEIKH":34,
+  "MESBAH UDDIN KHOLIFA":35,
+  "APON SUTRODHAR":36,
+  "MD SIYAM MOLLA":37,
+  "MD WALIDUJJAMAN SOHAN":38,
+  "RAKIBUL MUNSHI":39,
+  "SYED MD TANZIM HUDA":40,
+  "RAJBE NUR ISLAM":41,
+  "SAIFULLAH SADAT JARRAH":42,
+  "SALAMA SABIT":43,
+  "ZIHAD AHMED SHARON":44,
+  "MD. MOSHIUR RAHMAN":45,
+  "MD MEZBAUL ISLAM":46,
+  "SHAH MUHAMMAD MAHI":47,
+  "ENAMUL HAQUE SIFAT":48,
+  "KAZI FAYEKUZZAMAN":49,
+  "MD.TAYEB HASAN MUSA":50,
+  "MD.ALIF RAHMAN":51,
+  "MD. REZWAN AHMED":52,
+  "MD ARAF SARDER":53,
+  "TAMIM KAZI":54,
+  "SHAHRIAR MAHMUD":55,
+  "HAMIDUR RAHMAN":56,
+  "SIMRAN HOSSAIN RIHAD":57,
+  "MD FARHAN RAHMAN AVI":58,
+  "ARAFAT MIA":59,
+  "ABUL HAYAT":60,
+  "SAHADAT BEPARY":61,
+  "MD ABDULLAH BIN RAJ":62,
+  "RIYAN KHAN":63,
+  "MD.ADOL":64,
+  "NAZMUS SAKIB":65,
+  "AMIR HAMJA GIHAD":66,
+  "MASHFIN MAHIN":67,
+  "MD.SAMIR KHAN":68,
+  "ABIR BISWAS":69,
+  "BISHWJIT BISWAS TIRTHO":70,
+  "FAHAD HOSSEN":71,
+  "MD.AHSANUL ISLAM MAHIM":72,
+  "RAFIUL ISLAM AYAN":73,
+  "SHAJID KHAN MAHIN":74,
+  "KHANDOKER FARHAN":75,
+  "RAFIUL BAIZED":76,
+  "MD SIZAN SHEIKH":77,
+  "MD ABDULLAH":78,
+  "MD. FAHIM FOKIR":79,
+  "MD. SIAM MONDOL":80,
+  "MD. SHAWON MONDOL":81,
+  "MD. TAHSIN ZAMAN":82,
+  "SAFWAN BIN SATTAR":83,
+  "SHAFAYET BIN JABBAR":84,
+  "ARHAM HASAN AKASH":85,
+  "SHAHRIAR NAFIZ SIFAT":86,
+  "ABDULLAH MOMIN":87,
+  "MD SHAD REZA":88,
+  "SOHEL MRIDHA":89,
+  "MD. SHOHIDUL ISLAM":90,
+  "MITUL BHUIYA":91,
+  "ABDULLAH BIN MUKHTER":92,
+  "MUNNA KHA":93,
+  "SABID ISLAM":94,
+  "MD. ALAMIN MRIDHA":95,
+  "SHAHRIYA MATUBBER":96,
+  "ADNAN HOSSEN ALIF":97,
+  "MUHTAMIM KABIR":98,
+  "S M RAHMAT ULLAH":99,
+  "AL HOSSAIN":100,
+  "MD OMOR FARUK TALHA":101,
+  "TAWHID ISLAM":102,
+};
+// STUDENT_ID_MAP-এ নেই এমন (ভবিষ্যতে যোগ হওয়া) নামের জন্য স্থায়ী hash-ID —
+// একই নামের জন্য প্রতিবার একই সংখ্যা দেবে, এবং বিদ্যমান ১-১০২ রেঞ্জের
+// সাথে সংঘর্ষ এড়াতে সবসময় ১০০০-এর বেশি হবে।
+function hashStudentId(name){
+  let h = 0;
+  const s = (name||'').toUpperCase();
+  for(let i=0;i<s.length;i++){ h = ((h<<5) - h + s.charCodeAt(i)) | 0; }
+  return 1000 + (Math.abs(h) % 90000);
+}
+function getStudentId(name){
+  const key = (name||'').toUpperCase();
+  if(STUDENT_ID_MAP.hasOwnProperty(key)) return STUDENT_ID_MAP[key];
+  const id = hashStudentId(key);
+  console.warn('[STUDENT_ID_MAP] নতুন ছাত্র "'+name+'" ম্যাপে নেই — সাময়িক hash-ID ('+id+') ব্যবহার হচ্ছে। STUDENT_ID_MAP-এ স্থায়ীভাবে যোগ করে নিন।');
+  return id;
+}
+
 // ── সব ছাত্রের ফ্ল্যাট লিস্ট তৈরি ──
 let allStudents = [];
 let roomCounter = {};
@@ -5773,7 +5916,6 @@ function assignRooms(){
   }
 
   allStudents = [];
-  let globalSerial = 1;
 
   for(const [blk, studs] of Object.entries(blockStudents)){
     const rooms = BLOCKS[blk].rooms;
@@ -5786,7 +5928,7 @@ function assignRooms(){
       if(roomIdx >= rooms.length){ roomIdx = rooms.length - 1; }
       const roomNo = rooms[roomIdx] || rooms[rooms.length-1];
       allStudents.push({
-        serial: globalSerial++,
+        serial: getStudentId(s.name),
         name: s.name,
         cls: s.cls,
         block: blk,
@@ -11615,7 +11757,7 @@ function attRender(){
   let html="";
   let totalPresent=0,totalAbsent=0,totalLeave=0;
   blkOrder.forEach(blk=>{
-    const studs=allStudents.filter(s=>s.blk===blk);
+    const studs=allStudents.filter(s=>(s.block||s.blk)===blk);
     if(!studs.length) return;
     const bc=BLOCKS[blk];
     const pCount=studs.filter(s=>attStatus[s.serial]==="present").length;
@@ -13101,13 +13243,20 @@ async function htRenderStaffWidget(){
       const cacheKey = blk+'_'+cat.id;
       HT_TASK_CACHE[cacheKey] = {blk, catLabel:cat.label, icon:cat.icon, students, markData, metaObj};
 
-      if(unmarked.length===0) done.push({label:cat.label, icon:cat.icon, cacheKey});
-      else pending.push({label:cat.label, icon:cat.icon, doneCount: students.length-unmarked.length, total: students.length});
+      if(unmarked.length===0){
+        done.push({label:cat.label, icon:cat.icon, cacheKey});
+      } else {
+        // ড্যাশবোর্ডের এই "⭕ বাকি" চিপ থেকেও সরাসরি ছাত্রদের নাম দেখা ও সমাধান করা যাবে —
+        // "রিপোর্ট দেওয়া বাকি আছে" পেজে যে RP_FD_LIST_CACHE/rpFdShowList ব্যবস্থা আছে সেটাই পুনর্ব্যবহার করা হলো
+        const listId = cat.id+'_'+blk+'_unmarked';
+        RP_FD_LIST_CACHE[listId] = {title: cat.icon+' '+cat.label+' — ব্লক '+blk+' — এখনো চিহ্নিত হয়নি ('+unmarked.length+' জন)', students: unmarked, isUnmarked:true, catId:cat.id, blk, dateKey};
+        pending.push({label:cat.label, icon:cat.icon, doneCount: students.length-unmarked.length, total: students.length, listId});
+      }
     });
 
     if(sportsDue){
       if(sportsData[blk]) done.push({label:'খেলাধুলা', icon:'⛹️', cacheKey:null, sports:true, blk});
-      else pending.push({label:'খেলাধুলা', icon:'⛹️', doneCount:0, total:1});
+      else pending.push({label:'খেলাধুলা', icon:'⛹️', doneCount:0, total:1, sports:true, blk});
     }
 
     const totalTasks = done.length+pending.length;
@@ -13123,7 +13272,7 @@ async function htRenderStaffWidget(){
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:6px;">
           ${done.map(d=>`<span onclick="${d.sports?`htShowSportsReport('${d.blk}',true)`:`htShowReport('${d.cacheKey}')`}" style="cursor:pointer;background:#eaf7ee;border:1px solid #bfe6c9;color:#2f9e5c;border-radius:8px;padding:5px 9px;font-size:11px;font-weight:600;">✅ ${d.icon} ${d.label}</span>`).join('')}
-          ${pending.map(p=>`<span style="background:#faf8f2;border:1px solid #e2dbc7;color:#8b6a1f;border-radius:8px;padding:5px 9px;font-size:11px;font-weight:600;">⭕ ${p.icon} ${p.label} (${bnDigits(p.doneCount)}/${bnDigits(p.total)})</span>`).join('')}
+          ${pending.map(p=>`<span onclick="${p.sports?`htShowSportsReport('${p.blk}',false)`:`rpFdShowList('${p.listId}')`}" style="cursor:pointer;background:#faf8f2;border:1px solid #e2dbc7;color:#8b6a1f;border-radius:8px;padding:5px 9px;font-size:11px;font-weight:600;">⭕ ${p.icon} ${p.label} (${bnDigits(p.doneCount)}/${bnDigits(p.total)})</span>`).join('')}
           ${totalTasks===0 ? '<span style="font-size:11px;color:#8b98a3;">আজকের কোনো রুটিনের সময় এখনো শুরু হয়নি</span>' : ''}
         </div>
       </div>`;
