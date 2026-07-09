@@ -2813,14 +2813,24 @@ function ogIsViewOnlyUser(){
   return u.role === 'asst' || u.role === 'arabic';
 }
 
+// আগে এখানে r.id (একটি লোকাল, প্রতি-ডিভাইসে আলাদাভাবে গোনা সংখ্যা যেমন ১,২,৩...) দিয়ে
+// ogActions অবজেক্টে টিক-স্টেট রাখা হতো। কিন্তু দুইজন হাউস টিউটর আলাদা ডিভাইস থেকে রিপোর্ট
+// জমা দিলে তাদের id একই সংখ্যা হয়ে যেতে পারতো (যেমন দুজনেরই প্রথম রিপোর্ট id:1) —
+// ফলে একজনের "ব্যবস্থা নেওয়া হয়েছে" টিক দিলে id মিলে যাওয়া অন্য ছাত্রেরও টিক পড়ে যেতো,
+// এবং তালিকা থেকে সঠিকভাবে সরতোও না। এখন থেকে Firebase-এর নিজস্ব ইউনিক পুশ-কী (fbKey)
+// ব্যবহার করা হচ্ছে, যা কখনো কলিশন হয় না।
+function ogRecordKey(r){
+  return r.fbKey || ('local_'+r.id);
+}
 function ogGetComplaints(){
   const list = (typeof bhRecords!=='undefined'?bhRecords:[]).filter(r=>r.isComplaint===true);
   const todayKey = fbTodayKey();
   return list.map(r=>{
-    const a = ogActions[r.id] || {actionTaken:false, actionDesc:'', complianceLog:{}, resolved:false};
+    const key = ogRecordKey(r);
+    const a = ogActions[key] || {actionTaken:false, actionDesc:'', complianceLog:{}, resolved:false};
     const streak = ogStreakDays(a.complianceLog);
     const underPunishment = a.actionTaken && !!(a.complianceLog && a.complianceLog[todayKey]) && !a.resolved;
-    return {r, a, streak, underPunishment};
+    return {r, a, key, streak, underPunishment};
   }).sort((x,y)=>(y.r.ts||0)-(x.r.ts||0)); // সর্বশেষ অভিযোগ আগে
 }
 
@@ -2878,10 +2888,11 @@ function ogRender(){
     return;
   }
 
-  document.getElementById('og-list').innerHTML = filtered.map(({r,a,streak})=>{
+  document.getElementById('og-list').innerHTML = filtered.map(({r,a,key,streak})=>{
     const isSevere = r.cat==='severe' || r.cat==='fight' || r.cat==='escape';
     const stuHistoryCount = items.filter(i=>i.r.stuName===r.stuName).length;
     const nameEsc = (r.stuName||'').replace(/'/g,"\\'");
+    const keyEsc = key.replace(/'/g,"\\'");
     return `<div class="og-card ${isSevere?'og-severe':''}">
       <div class="og-hd">
         <div style="flex:1;">
@@ -2896,20 +2907,20 @@ function ogRender(){
       <div class="og-body">
         ${streak>0 ? `<div class="og-streak-badge">🔥 টানা ${bnDigits(streak)} দিন ধরে চলছে</div>` : ''}
 
-        <div class="og-check-row" onclick="ogToggleAction(${r.id})">
+        <div class="og-check-row" onclick="ogToggleAction('${keyEsc}')">
           <div class="og-check-box ${a.actionTaken?'checked':''}">${a.actionTaken?'✓':''}</div>
           <div class="og-check-label">ব্যবস্থা নেওয়া হয়েছে</div>
         </div>
 
         ${a.actionTaken ? `
-        <input class="og-action-input" placeholder="কী ব্যবস্থা নেওয়া হয়েছে লিখুন..." value="${(a.actionDesc||'').replace(/"/g,'&quot;')}" onblur="ogUpdateDesc(${r.id}, this.value)"/>
+        <input class="og-action-input" placeholder="কী ব্যবস্থা নেওয়া হয়েছে লিখুন..." value="${(a.actionDesc||'').replace(/"/g,'&quot;')}" onblur="ogUpdateDesc('${keyEsc}', this.value)"/>
 
-        <div class="og-check-row" onclick="ogToggleCompliance(${r.id})">
+        <div class="og-check-row" onclick="ogToggleCompliance('${keyEsc}')">
           <div class="og-check-box ${a.complianceLog&&a.complianceLog[fbTodayKey()]?'checked':''}">${a.complianceLog&&a.complianceLog[fbTodayKey()]?'✓':''}</div>
           <div class="og-check-label">আজ যথাযথভাবে প্রতিপালন হচ্ছে</div>
         </div>
 
-        ${!a.resolved ? `<button class="og-resolve-btn" onclick="ogResolve(${r.id})">✅ সমস্যা সমাধান হয়েছে — বন্ধ করুন</button>` :
+        ${!a.resolved ? `<button class="og-resolve-btn" onclick="ogResolve('${keyEsc}')">✅ সমস্যা সমাধান হয়েছে — বন্ধ করুন</button>` :
           `<div style="text-align:center;font-size:11px;color:#2f9e5c;font-weight:700;">✅ সমাধান হয়ে গেছে</div>`}
         ` : ''}
       </div>
@@ -2969,6 +2980,9 @@ async function ogSave(recordId){
   }
 }
 
+// এই ফাংশনগুলো এখন recordId হিসেবে ogRecordKey()-এর তৈরি ইউনিক key (Firebase fbKey) নেয়,
+// আগের মতো কলিশন-প্রবণ লোকাল সংখ্যা (r.id) নয় — তাই এক ছাত্রের টিক দিলে আর কখনো
+// অন্য ছাত্রের সাথে গুলিয়ে যাবে না।
 function ogToggleAction(recordId){
   if(ogIsViewOnlyUser()) return;
   if(!ogActions[recordId]) ogActions[recordId] = {actionTaken:false, actionDesc:'', complianceLog:{}, resolved:false};
@@ -6641,6 +6655,12 @@ function bhPopulateStudents(){
     list = allStudents.filter(s=>(typeof ARABIC_ASSIGNMENT!=="undefined") && ARABIC_ASSIGNMENT[s.serial]===user.id);
   } else {
     list = myBlk ? allStudents.filter(s=>(s.block||s.blk)===myBlk) : allStudents;
+  }
+  // ছুটিতে/বাড়িতে থাকা ছাত্রদের আচরণ/অভিযোগ রিপোর্ট ফর্মের তালিকা থেকে বাদ দেওয়া হয় —
+  // যেহেতু সে বর্তমানে হোস্টেলেই নেই, তার নামে রিপোর্ট করার সুযোগ থাকার কথা না
+  // (আগে এই একটি ফর্মেই এই ফিল্টার বাদ পড়ে গিয়েছিল, যদিও অন্য সব দৈনন্দিন রিপোর্টিং জায়গায় ছিল)।
+  if(typeof lvRecords!=='undefined' && typeof lvIsActiveToday==='function'){
+    list = list.filter(s => !lvRecords.some(r=>r.stuSerial===s.serial && lvIsActiveToday(r)));
   }
   list.forEach(s=>{
     const o=document.createElement("option");
