@@ -1045,30 +1045,45 @@ function isoToBnDate(iso){
   return formatBnDate(new Date(y, m-1, d));
 }
 
-// একজন ছাত্রের আচরণ রেকর্ড থেকে "আচরণ পয়েন্ট" (০-১০০) হিসাব করে — flat বিয়োগ-যোগের বদলে
-// দুটো নীতি মেনে: (১) সাম্প্রতিক ঘটনার প্রভাব বেশি, পুরনোটা কমতে থাকে (recency-weighted),
-// (২) প্রতিটি রেকর্ডের নিজস্ব pts মান দিয়েই তীব্রতা (severity) ইতিমধ্যে প্রতিফলিত হয়, তাই সেটা এখানে
-// দ্বিতীয়বার আরোপ করা হয় না — শুধু কতটা "সাম্প্রতিক" তার ওপর ভিত্তি করে ওজন প্রয়োগ হয়।
-// এই ফাংশনটা future Boarding Quality Index-এও reuse করা যাবে, তাই এখানেই কেন্দ্রীভূত রাখা হলো।
-function bhRecencyWeight(ts){
-  if(typeof ts!=="number") return 0.3; // তারিখ অজানা রেকর্ড (পুরনো ডেমো ডেটা) — সর্বনিম্ন ওজন
-  const daysAgo = (Date.now()-ts)/86400000;
-  if(daysAgo<=7) return 1.0;   // গত ৭ দিন — পূর্ণ প্রভাব
-  if(daysAgo<=30) return 0.6;  // ৮-৩০ দিন — মাঝারি প্রভাব
-  return 0.3;                  // ৩০+ দিন — কম প্রভাব, কিন্তু সম্পূর্ণ মুছে যায় না
-}
+// একজন ছাত্রের আচরণ রেকর্ড থেকে "আচরণ পয়েন্ট" (০-১০০) হিসাব করে।
+// পুরনো ভার্সনে flat নেট (১০০ − মাইনাস + প্লাস, তারপর ০-১০০ ক্ল্যাম্প) ব্যবহার হতো, যার ফলে রুটিন
+// চেকলিস্ট থেকে আসা ঘন ঘন +১ পয়েন্ট গুরুতর লঙ্ঘনকেও পুরোপুরি চাপা দিয়ে স্কোর আবার ১০০-তে ফিরিয়ে দিতে পারত —
+// এটা কোনো আন্তর্জাতিক স্ট্যান্ডার্ড (PBIS/consequence-ladder মডেল) সমর্থন করে না, কারণ merit দিয়ে demerit
+// "মুছে ফেলা" ন্যায্য নয়। তাই এখন এই ফাংশনটা DISC_GROUPS/bhApplyGraceRule-এ ইতিমধ্যে থাকা
+// tier-ভিত্তিক (minor/major/severe) ইঞ্জিনটাই পুনর্ব্যবহার করে (ছাত্র র‍্যাংকিং ইঞ্জিনের সাথে সামঞ্জস্যপূর্ণ একই যুক্তি),
+// এবং সবচেয়ে গুরুত্বপূর্ণ নিয়ম: এই উইন্ডোতে কোনো "major" বা "severe" তীব্রতার লঙ্ঘন থাকলে,
+// যতই ভালো আচরণ/প্রশংসা পয়েন্ট যোগ হোক না কেন, স্কোর একটা সিলিং-এর ওপরে উঠতে পারবে না —
+// যাতে গুরুতর ঘটনা কখনো "অদৃশ্য" হয়ে না যায়।
+// (classSkip/arabic ক্যাটাগরি মূল CAT_TO_GROUP-এ ম্যাপ করা নেই — সেটা স্টাফ/আরবি র‍্যাংকিং ইঞ্জিনের নিজস্ব
+// সুযোগের মধ্যে, তাই এখানে শুধু প্রোফাইল-স্কোরের জন্য আলাদা লোকাল ম্যাপিং ব্যবহার করা হলো, র‍্যাংকিং ইঞ্জিন অপরিবর্তিত থাকছে)
+const STUP_CAT_TO_GROUP = Object.assign({classSkip:"conduct", arabic:"study"}, (typeof CAT_TO_GROUP!=="undefined"?CAT_TO_GROUP:{}));
 function stupComputeBehaviorScore(bhRecInWindow){
-  let weightedMinus=0, weightedPlus=0, minusCount=0;
-  bhRecInWindow.forEach(r=>{
-    const w = bhRecencyWeight(r.ts);
-    if(r.type==="minus"){ weightedMinus += r.pts*w; minusCount++; }
-    else if(r.type==="plus"){ weightedPlus += r.pts*w; }
-  });
-  // শূন্য-লঙ্ঘন বোনাস: এই উইন্ডোতে একটাও নেতিবাচক রেকর্ড না থাকলে ছোট একটা পুরস্কার —
-  // স্টাফ KPI-র মাসিক জিরো-ইনসিডেন্ট বোনাসের মতোই ধারণা, ছাত্রদের জন্য ছোট আকারে
-  const zeroIncidentBonus = minusCount===0 ? 5 : 0;
-  const raw = 100 - weightedMinus + weightedPlus + zeroIncidentBonus;
-  return { score: Math.max(0, Math.min(100, Math.round(raw))), weightedMinus: Math.round(weightedMinus), weightedPlus: Math.round(weightedPlus), zeroIncidentBonus };
+  const minusRaw = bhRecInWindow.filter(r=>r.type==="minus" && STUP_CAT_TO_GROUP[r.cat]);
+  const minusRawMapped = minusRaw.map(r=>({...r, cat: STUP_CAT_TO_GROUP[r.cat] ? r.cat : r.cat})); // cat অপরিবর্তিত রাখা হলো, নিচে গ্রুপ-লুকআপে STUP ম্যাপিং ব্যবহার হবে
+  const adjusted = (typeof bhApplyGraceRule==="function") ? bhApplyGraceRule(minusRawMapped).map((r,i)=>{
+    // bhApplyGraceRule মূল CAT_TO_GROUP দিয়ে গ্রুপ বের করে; classSkip/arabic-এর জন্য সেটা খালি থাকায়
+    // ওই দুই ক্যাটাগরির রেকর্ডে fallback হিসেবে STUP ম্যাপিং থেকে DISC_GROUPS-এর pts/tier সরাসরি বসানো হলো।
+    const origGrp = (typeof CAT_TO_GROUP!=="undefined") ? CAT_TO_GROUP[minusRawMapped[i].cat] : null;
+    if(!origGrp && STUP_CAT_TO_GROUP[minusRawMapped[i].cat] && typeof DISC_GROUPS!=="undefined"){
+      const conf = DISC_GROUPS[STUP_CAT_TO_GROUP[minusRawMapped[i].cat]];
+      if(conf) return {...r, adjPts: conf.pts, graceApplied:false, decayWeight:0, _grp: STUP_CAT_TO_GROUP[minusRawMapped[i].cat]};
+    }
+    return {...r, _grp: origGrp};
+  }) : minusRawMapped.map(r=>({...r, adjPts:r.pts, _grp: STUP_CAT_TO_GROUP[r.cat]}));
+  const minusTotal = adjusted.reduce((s,r)=>s+r.adjPts,0);
+  const plusTotal = bhRecInWindow.filter(r=>r.type==="plus").reduce((s,r)=>s+r.pts,0);
+  const tierOf = r => (typeof DISC_GROUPS!=="undefined" && r._grp && DISC_GROUPS[r._grp]) ? DISC_GROUPS[r._grp].tier : null;
+  const hasSevere = adjusted.some(r=>r.adjPts>0 && tierOf(r)==="severe");
+  const hasMajor  = adjusted.some(r=>r.adjPts>0 && tierOf(r)==="major");
+  const ceiling = hasSevere ? 40 : (hasMajor ? 70 : 100); // গুরুতর/মেজর লঙ্ঘন থাকলে merit দিয়ে পূর্ণ পুনরুদ্ধার আটকানো হলো
+  const raw = 100 - minusTotal + plusTotal;
+  return {
+    score: Math.max(0, Math.min(ceiling, Math.round(raw))),
+    weightedMinus: Math.round(minusTotal),
+    weightedPlus: Math.round(plusTotal),
+    zeroIncidentBonus: 0,
+    ceiling, hasSevere, hasMajor
+  };
 }
 
 // ══ হোস্টেলের "দিন" চক্র — মাগরিব থেকে পরের দিন মাগরিব পর্যন্ত ══
@@ -2691,7 +2706,6 @@ function obShowHistory(){
     <div class="rk-tab active" id="og-tab-all" onclick="ogSetTab('all')">📋 সব</div>
     <div class="rk-tab" id="og-tab-pending" onclick="ogSetTab('pending')">⏳ ব্যবস্থা বাকি</div>
     <div class="rk-tab" id="og-tab-active" onclick="ogSetTab('active')">🔒 শাস্তির আওতায়</div>
-    <div class="rk-tab" id="og-tab-resolved" onclick="ogSetTab('resolved')">✅ সমাধান হয়েছে</div>
   </div>
 
   <div id="og-list"></div>
@@ -2728,6 +2742,7 @@ function obShowHistory(){
 .og-hd-time{font-size:10px;color:#8b98a3;white-space:nowrap;}
 .og-cat-badge{font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;background:#c3bebe;color:#c9605f;display:inline-block;margin-top:6px;}
 .og-history-badge{font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;background:#f0dca6;color:#8a6a1f;display:inline-block;margin-top:6px;margin-left:6px;cursor:pointer;}
+.og-prev-banner{font-size:11px;color:#8a5a1f;background:#fbf1d9;border:1px solid #f0dca6;border-radius:8px;padding:7px 10px;margin-top:8px;line-height:1.5;}
 .og-body{padding:12px 14px;}
 .og-check-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:pointer;}
 .og-check-box{width:22px;height:22px;border-radius:6px;border:1.5px solid #dbe2e8;background:#faf8f2;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;}
@@ -2785,7 +2800,7 @@ function goComplaintCenter(){
 
 function ogSetTab(tab){
   ogTab = tab;
-  ['all','pending','active','resolved'].forEach(t=>{
+  ['all','pending','active'].forEach(t=>{
     document.getElementById('og-tab-'+t).classList.toggle('active', t===tab);
   });
   ogRender();
@@ -2836,26 +2851,23 @@ function ogGetComplaints(){
 
 let ogItemsCache = [];
 function ogRender(){
-  const items = ogGetComplaints();
-  ogItemsCache = items;
-  const totalAll = items.length;
-  const totalPending = items.filter(i=>!i.a.actionTaken && !i.a.resolved).length;
-  const totalActive = items.filter(i=>i.underPunishment).length;
-  const totalResolved = items.filter(i=>i.a.resolved).length;
-
+  // allItems = সব অভিযোগ (সমাধান হওয়াসহ) — এটাই পূর্ণ ইতিহাসের উৎস, ছাত্র-প্রোফাইল/হিস্ট্রি মডালে ব্যবহৃত হয়
+  const allItems = ogGetComplaints();
+  ogItemsCache = allItems;
+  const totalAllEver = allItems.length;
   const tabsWrap = document.getElementById('og-tabs-wrap');
 
   if(ogIsViewOnlyUser()){
     // হাউস টিউটরগণ শুধু দেখবেন কাদের বিরুদ্ধে অভিযোগ জমা হয়েছে — বিস্তারিত/অ্যাকশন কিছুই না
     if(tabsWrap) tabsWrap.style.display = 'none';
-    document.getElementById('og-sub').textContent = `মোট ${bnDigits(totalAll)}টি অভিযোগ`;
-    if(!items.length){
+    document.getElementById('og-sub').textContent = `মোট ${bnDigits(totalAllEver)}টি অভিযোগ`;
+    if(!allItems.length){
       document.getElementById('og-list').innerHTML = '<div class="og-empty">📭 এখন পর্যন্ত কোনো অভিযোগ জমা হয়নি</div>';
       return;
     }
     // ছাত্র অনুযায়ী গ্রুপ করে শুধু নাম, শ্রেণী, ব্লক ও অভিযোগ সংখ্যা দেখানো
     const byStu = {};
-    items.forEach(({r})=>{
+    allItems.forEach(({r})=>{
       const key = r.stuName;
       if(!byStu[key]) byStu[key] = {name:r.stuName, cls:r.cls, blk:r.blk, count:0, lastTs:0};
       byStu[key].count++;
@@ -2876,21 +2888,32 @@ function ogRender(){
   }
 
   if(tabsWrap) tabsWrap.style.display = '';
+
+  // সমাধান হয়ে যাওয়া অভিযোগ এডমিন/সুপারের সক্রিয় তালিকা থেকে বাদ — শুধু ছাত্রের ইতিহাসে
+  // (📋 ব্যাজ ক্লিক করে) দেখা যাবে, যাতে এই পেজে শুধু চলমান/অমীমাংসিত অভিযোগগুলোই থাকে।
+  const items = allItems.filter(i=>!i.a.resolved);
+  const totalAll = items.length;
+  const totalPending = items.filter(i=>!i.a.actionTaken).length;
+  const totalActive = items.filter(i=>i.underPunishment).length;
   document.getElementById('og-sub').textContent = `মোট ${bnDigits(totalAll)} • বাকি ${bnDigits(totalPending)} • শাস্তির আওতায় ${bnDigits(totalActive)}`;
 
   let filtered = items;
-  if(ogTab==='pending') filtered = items.filter(i=>!i.a.actionTaken && !i.a.resolved);
+  if(ogTab==='pending') filtered = items.filter(i=>!i.a.actionTaken);
   else if(ogTab==='active') filtered = items.filter(i=>i.underPunishment);
-  else if(ogTab==='resolved') filtered = items.filter(i=>i.a.resolved);
 
   if(!filtered.length){
-    document.getElementById('og-list').innerHTML = '<div class="og-empty">📭 এই তালিকায় কিছু নেই</div>';
+    document.getElementById('og-list').innerHTML = '<div class="og-empty">📭 এই তালিকায় কিছু নেই — সব অভিযোগের ব্যবস্থা নেওয়া হয়ে গেছে</div>';
     return;
   }
 
   document.getElementById('og-list').innerHTML = filtered.map(({r,a,key,streak})=>{
     const isSevere = r.cat==='severe' || r.cat==='fight' || r.cat==='escape';
-    const stuHistoryCount = items.filter(i=>i.r.stuName===r.stuName).length;
+    // stuHistoryCount ও পূর্ববর্তী অভিযোগ — allItems (সমাধান হওয়াসহ পূর্ণ ইতিহাস) থেকে হিসাব করা হয়,
+    // শুধু বর্তমানে-দৃশ্যমান তালিকা (items) থেকে নয় — যাতে সমাধান হয়ে যাওয়া পুরনো অভিযোগও গণনায় আসে।
+    const stuAllHistory = allItems.filter(i=>i.r.stuName===r.stuName).sort((x,y)=>(y.r.ts||0)-(x.r.ts||0));
+    const stuHistoryCount = stuAllHistory.length;
+    // এই অভিযোগের আগে জমা হওয়া সর্বশেষ পূর্ববর্তী অভিযোগ (থাকলে) — কার্ডেই একটা প্রিভিউ ব্যানার হিসেবে দেখানো হয়
+    const prevComplaint = stuAllHistory.find(i => (i.r.ts||0) < (r.ts||0));
     const nameEsc = (r.stuName||'').replace(/'/g,"\\'");
     const keyEsc = key.replace(/'/g,"\\'");
     return `<div class="og-card ${isSevere?'og-severe':''}">
@@ -2901,6 +2924,7 @@ function ogRender(){
           <div class="og-hd-desc">${r.desc||''}</div>
           <div class="og-cat-badge">${BH_CAT_LABELS[r.cat]||r.cat}</div>
           ${stuHistoryCount>1 ? `<div class="og-history-badge" onclick="event.stopPropagation();ogShowStudentHistory('${nameEsc}')">📋 এই ছাত্রের মোট ${bnDigits(stuHistoryCount)}টি অভিযোগ — দেখুন</div>` : ''}
+          ${prevComplaint ? `<div class="og-prev-banner">⚠️ পূর্বে (${prevComplaint.r.ts ? ncFmtDateBn(fbDateKey(new Date(prevComplaint.r.ts))) : (prevComplaint.r.time||'—')}) এই ছাত্রের নামে অভিযোগ এসেছিল: <b>${BH_CAT_LABELS[prevComplaint.r.cat]||prevComplaint.r.cat}</b>${prevComplaint.r.desc ? ' — '+prevComplaint.r.desc : ''}</div>` : ''}
         </div>
         <div class="og-hd-time">${r.time||''}</div>
       </div>
@@ -2920,8 +2944,7 @@ function ogRender(){
           <div class="og-check-label">আজ যথাযথভাবে প্রতিপালন হচ্ছে</div>
         </div>
 
-        ${!a.resolved ? `<button class="og-resolve-btn" onclick="ogResolve('${keyEsc}')">✅ সমস্যা সমাধান হয়েছে — বন্ধ করুন</button>` :
-          `<div style="text-align:center;font-size:11px;color:#2f9e5c;font-weight:700;">✅ সমাধান হয়ে গেছে</div>`}
+        <button class="og-resolve-btn" onclick="ogResolve('${keyEsc}')">✅ সমস্যা সমাধান হয়েছে — বন্ধ করুন</button>
         ` : ''}
       </div>
     </div>`;
@@ -4287,8 +4310,8 @@ function sfSetCondition(serial, cond){
       // নাহলে একটি রেকর্ড আপডেট হলেও বাকিগুলো "অসুস্থ" হিসেবেই থেকে যেত।
       const matches = hlRecords.filter(r=>r.stuName===stu.name.toUpperCase() && (r.status==='active'||r.status==='recovering'));
       matches.forEach(rec=>{
-        if(cond==='recovered' && typeof hlMarkRecovered==='function'){ hlMarkRecovered(rec.id); }
-        else if(cond==='better'){ rec.status='recovering'; if(typeof fbSet==='function') fbSet('healthRecords/'+rec.id, rec); }
+        if(cond==='recovered' && typeof hlMarkRecovered==='function'){ hlMarkRecovered(rec.fbKey||rec.id); }
+        else if(cond==='better'){ rec.status='recovering'; if(typeof fbSet==='function') fbSet('healthRecords/'+(rec.fbKey||rec.id), rec); }
       });
     }
   }
@@ -4465,19 +4488,34 @@ function scToggleSick(serial){
   scMarks[serial].sick = turningOn;
 
   if(turningOn){
-    // নতুন স্বাস্থ্য রেকর্ড তৈরি (অথবা বিদ্যমান লিংক থাকলে সেটাই ব্যবহার)
+    // নতুন স্বাস্থ্য রেকর্ড তৈরি — কিন্তু আগে চেক করা হয় এই ছাত্রের ইতিমধ্যে কোনো সক্রিয়/আরোগ্যরত
+    // স্বাস্থ্য রেকর্ড আছে কিনা (অন্য দিনে বা Health পেজ থেকে সরাসরি যোগ করা হয়ে থাকতে পারে) —
+    // থাকলে সেই একই রেকর্ডই পুনর্ব্যবহার হবে, ডুপ্লিকেট তৈরি হবে না (আগে scSickLink শুধু
+    // আজকের ইন-মেমরি লিংক চেক করত, তাই পেজ রিলোড বা পরের দিন টিক দিলে দ্বিতীয় একটা রেকর্ড
+    // তৈরি হয়ে যেত — একটাতে "সুস্থ হয়েছে" আপডেট হলেও আরেকটা "অসুস্থ" হিসেবে থেকে যেত)
     if(typeof hlRecords!=='undefined'){
       const note = scNotes[serial] || '';
-      const rec = {id:hlNextId++, stuName:stu.name.toUpperCase(), cls:stu.cls, blk:(stu.block||stu.blk), illness:note||'সাধারণ অসুস্থতা (বিস্তারিত নোট বাকি)', medicine:'—', dosage:'', status:'active', note:note, date:todayBnDate(), time:'আজ সকাল ৮:৪০-৯:৩০', by:user.name, ts:Date.now()};
-      hlRecords.unshift(rec);
-      scSickLink[serial] = rec.id;
-      fbPush('healthRecords', rec);
+      const existing = hlRecords.find(r=>r.stuName===stu.name.toUpperCase() && (r.status==='active'||r.status==='recovering'));
+      if(existing){
+        scSickLink[serial] = existing.id;
+        if(note){
+          existing.note = note; existing.illness = note;
+          if(typeof fbSet==='function') fbSet('healthRecords/'+(existing.fbKey||existing.id), existing);
+        }
+      } else {
+        const rec = {id:hlNextId++, stuName:stu.name.toUpperCase(), cls:stu.cls, blk:(stu.block||stu.blk), illness:note||'সাধারণ অসুস্থতা (বিস্তারিত নোট বাকি)', medicine:'—', dosage:'', status:'active', note:note, date:todayBnDate(), time:'আজ সকাল ৮:৪০-৯:৩০', by:user.name, ts:Date.now()};
+        hlRecords.unshift(rec);
+        scSickLink[serial] = rec.id;
+        fbPush('healthRecords', rec);
+      }
     }
   } else {
-    // আজকের তৈরি করা রেকর্ড থাকলে সেটি বাদ দেওয়া (ভুলবশত টিক দেওয়া সংশোধনের জন্য)
+    // আজকেই তৈরি হওয়া রেকর্ড হলে সেটি বাদ দেওয়া (ভুলবশত টিক দেওয়া সংশোধনের জন্য) —
+    // কিন্তু এটা যদি আগের কোনো দিনের/অন্য ফ্লো থেকে তৈরি বিদ্যমান রেকর্ড হয় (উপরের ব্লকে reuse হয়েছে),
+    // সেটা মুছে ফেলা হবে না — কারণ ছাত্র সত্যিই অসুস্থ, শুধু আজকের চেকবক্সটা ভুলবশত চাপা হয়েছিল
     if(typeof hlRecords!=='undefined' && scSickLink[serial]){
       const idx = hlRecords.findIndex(r=>r.id===scSickLink[serial]);
-      if(idx>=0) hlRecords.splice(idx,1);
+      if(idx>=0 && hlRecords[idx].date===todayBnDate()) hlRecords.splice(idx,1);
       delete scSickLink[serial];
     }
   }
@@ -7111,6 +7149,12 @@ function hlSave(){
   if(!stuName){hlShowToast("ছাত্র নির্বাচন করুন","err");return;}
   if(!illness){hlShowToast("রোগের ধরন নির্বাচন করুন","err");return;}
   if(!medicine){hlShowToast("ওষুধের নাম লিখুন","err");return;}
+  if(status==='active'||status==='recovering'){
+    const dupe = hlRecords.find(r=>r.stuName===stuName.toUpperCase() && (r.status==='active'||r.status==='recovering'));
+    if(dupe && !confirm("⚠️ "+stuName+"-এর জন্য ইতিমধ্যে একটি সক্রিয় স্বাস্থ্য রেকর্ড আছে (\""+dupe.illness+"\""+(dupe.date?", "+dupe.date:"")+")। তবুও কি সম্পূর্ণ নতুন আলাদা রেকর্ড যোগ করতে চান?")){
+      return;
+    }
+  }
   const raw=localStorage.getItem("hms_user");
   const u=raw?JSON.parse(raw):{name:"ডেমো"};
   const opt=stuSel.options[stuSel.selectedIndex];
@@ -7134,12 +7178,18 @@ function hlFilter(f,el){
   hlRender();
 }
 
-function hlMarkRecovered(id){
-  const r = hlRecords.find(x=>x.id===id);
+function hlMarkRecovered(key){
+  // আগে শুধু r.id (ছোট ক্লায়েন্ট-সাইড কাউন্টার নম্বর) দিয়ে খোঁজা ও fbSet করা হতো —
+  // কিন্তু fbPush() রেকর্ডকে Firebase-এর নিজস্ব ইউনিক কী-তে (যেমন "-Nabc123") সংরক্ষণ করে, r.id-তে নয়।
+  // তাই fbSet('healthRecords/'+id, ...) ভুল পাথে লিখত — একটা বাড়তি/স্ট্রে এন্ট্রি তৈরি হতো "healthRecords/5"-এ,
+  // যেখানে ভেতরের id ফিল্ড অপরিবর্তিত (৫) থেকে যেত। ফলে পরের সিঙ্কে দুইটা ভিন্ন রেকর্ড একই id শেয়ার করতে
+  // পারত — এবং সেই id দিয়ে খুঁজলে ভুল ছাত্রের রেকর্ড ধরা পড়ত (যেমনটা আরহাম/ফাহাদ-এর ক্ষেত্রে ঘটেছিল)।
+  // এখন থেকে সবসময় আসল Firebase key (fbKey) দিয়ে ম্যাচ ও লেখা হবে, r.id শুধু আনসিঙ্কড লোকাল রেকর্ডের ফলব্যাক।
+  const r = hlRecords.find(x=>String(x.fbKey||x.id)===String(key));
   if(!r) return;
   r.status = "ok";
   r.recoveredDate = (typeof todayBnDate==="function") ? todayBnDate() : "আজ";
-  if(typeof fbSet==="function") fbSet('healthRecords/'+id, r);
+  if(typeof fbSet==="function") fbSet('healthRecords/'+(r.fbKey||r.id), r);
   hlRender();
   hlShowToast("✅ "+r.stuName+" সুস্থ হয়েছে হিসেবে চিহ্নিত করা হয়েছে!","ok");
   if(document.getElementById('page-dashboard')?.classList.contains('active') && typeof renderDashboard==='function') renderDashboard();
@@ -8220,6 +8270,7 @@ function showStaffProfile(staffId, fromPage){
       <div class="stup-pts-bar-fill" id="stup-pts-fill" style="width:100%"></div>
     </div>
     <div class="stup-pts-legend"><span>০</span><span>৫০</span><span>১০০</span></div>
+    <div id="stup-pts-notice" style="display:none;margin-top:8px;padding:8px 10px;background:#fdf3f3;border:1.5px solid #f0caca;border-radius:9px;font-size:11px;color:#c94545;line-height:1.4;"></div>
   </div>
 
   <!-- ব্যক্তিগত তথ্য -->
@@ -8486,9 +8537,20 @@ function showStudentProfile(serial, fromPage){
   const ptsFill=document.getElementById("stup-pts-fill");
   if(ptsBig){
     ptsBig.textContent=bnST(pts)+"/১০০"; ptsBig.style.color=ptsColor;
-    ptsBig.title = "সাম্প্রতিকতা-ভিত্তিক ওজনসহ হিসাব — বিয়োগ: "+bnST(scoreResult.weightedMinus)+", যোগ: "+bnST(scoreResult.weightedPlus)+(scoreResult.zeroIncidentBonus?", শূন্য-লঙ্ঘন বোনাস: +"+bnST(scoreResult.zeroIncidentBonus):"");
+    ptsBig.title = "তীব্রতা-স্তরভিত্তিক হিসাব — বিয়োগ: "+bnST(scoreResult.weightedMinus)+", যোগ: "+bnST(scoreResult.weightedPlus)+(scoreResult.ceiling<100?", সিলিং: "+bnST(scoreResult.ceiling):"");
   }
   if(ptsFill){ ptsFill.style.width=pts+"%"; ptsFill.style.background=ptsColor; }
+  const ptsNotice=document.getElementById("stup-pts-notice");
+  if(ptsNotice){
+    if(scoreResult.hasSevere || scoreResult.hasMajor){
+      ptsNotice.style.display="block";
+      ptsNotice.textContent = scoreResult.hasSevere
+        ? "🚨 এই সময়সীমায় একটি গুরুতর অসদাচরণ রেকর্ড আছে — ভালো আচরণ পয়েন্ট যোগ হলেও স্কোর "+bnST(scoreResult.ceiling)+"-এর বেশি উঠবে না, যতক্ষণ না এটি পর্যালোচনা/সমাধান হয়।"
+        : "⚠️ এই সময়সীমায় একটি বড় ধরনের লঙ্ঘন রেকর্ড আছে — ভালো আচরণ পয়েন্ট যোগ হলেও স্কোর "+bnST(scoreResult.ceiling)+"-এর বেশি উঠবে না।";
+    } else {
+      ptsNotice.style.display="none";
+    }
+  }
 
   // র‍্যাংক (মাসিক + বাৎসরিক, ব্লক + সামগ্রিক)
   const rankBnFn=(typeof bnRK==="function")?bnRK:bnST;
@@ -11761,7 +11823,7 @@ function hlRender(){
         <span class="hl-footer-time">🕐 ${r.time}</span>
         <span class="hl-footer-by">👤 ${r.by}</span>
       </div>
-      ${canRecover?`<button onclick="hlMarkRecovered(${r.id})" style="width:100%;margin-top:10px;padding:9px;background:#e2f3e6;border:1.5px solid #2f9e5c55;border-radius:9px;color:#2f9e5c;font-size:12px;font-weight:700;cursor:pointer;font-family:'Segoe UI',sans-serif;">✅ সুস্থ হয়েছে — তারিখ যোগ করুন</button>`:""}
+      ${canRecover?`<button onclick="hlMarkRecovered('${(r.fbKey||r.id)+""}')" style="width:100%;margin-top:10px;padding:9px;background:#e2f3e6;border:1.5px solid #2f9e5c55;border-radius:9px;color:#2f9e5c;font-size:12px;font-weight:700;cursor:pointer;font-family:'Segoe UI',sans-serif;">✅ সুস্থ হয়েছে — তারিখ যোগ করুন</button>`:""}
     </div>`;
   }).join("");
 }
