@@ -1116,7 +1116,12 @@ function stupComputeBehaviorScore(bhRecInWindow){
     if(minorMinusThisDay.length===0 && majorSevereThisDay.length===0) perfectDayBonus += 1;
   });
 
-  const raw = 100 - minorViolationCount - majorSevereTotal + perfectDayBonus;
+  // ⚠️ বাগ-ফিক্স (জুলাই ২০২৬): আগে এখানে "100 - ..." বেস-লাইন থেকে হিসাব শুরু হতো, ফলে
+  // কোনো ডেটা না থাকলেও (অ্যাপ ব্যবহারের প্রথম দিনেই) স্কোর সরাসরি ১০০ দেখাত — যেটা এই
+  // দিন-ভিত্তিক পয়েন্ট-সিস্টেমের নীতির সাথে সাংঘর্ষিক (১০০ পয়েন্ট পেতে হলে অন্তত ১০০টা
+  // নিট পরিপূর্ণ দিন প্রকৃতপক্ষে অর্জন করতে হবে, শুরুতেই বিনামূল্যে ১০০ পাওয়ার কথা নয়)।
+  // এখন স্কোর শূন্য থেকে শুরু হয়ে প্রতিটি পরিপূর্ণ দিনে +১ করে প্রকৃতপক্ষে অর্জিত হয়।
+  const raw = perfectDayBonus - minorViolationCount - majorSevereTotal;
   return {
     score: Math.max(0, Math.min(ceiling, Math.round(raw))),
     weightedMinus: Math.round(minorViolationCount + majorSevereTotal),
@@ -1124,6 +1129,55 @@ function stupComputeBehaviorScore(bhRecInWindow){
     zeroIncidentBonus: 0,
     ceiling, hasSevere, hasMajor
   };
+}
+
+// ছাত্র-প্রোফাইলে "দৈনন্দিন চেকলিস্টে অনিয়মের ইতিহাস" — প্রতিটি নির্দিষ্ট রুটিন-অনিয়মের
+// (ফজর দেরি/কাজা, আরবি ক্লাস, পরিচ্ছন্নতা, ইউনিফর্ম ইত্যাদি) আলাদা গণনা ও ক্লিক করলে তারিখ —
+// আগে থেকেই বিদ্যমান "আজকের অসম্পূর্ণ কাজ" পেজের ncHistoryIndex/ncShowHistoryDates অবকাঠামো
+// পুনর্ব্যবহার করে (গত ৯০ দিনের ডেটা, একই মডাল)।
+function stupRenderIrregularityHistory(serial){
+  const el = document.getElementById('stup-irr-history-list');
+  if(!el) return;
+  if(typeof ncEnsureHistoryIndex!=='function'){ el.innerHTML=''; return; }
+  el.innerHTML = '<div style="text-align:center;padding:20px;color:#8b98a3;font-size:12px;">⏳ লোড হচ্ছে...</div>';
+  ncEnsureHistoryIndex().then(idx=>{
+    if(!el.isConnected) return; // ততক্ষণে অন্য প্রোফাইলে সরে গেলে পুরনো টার্গেট আপডেট এড়ানো
+    const entries = (idx && idx[serial]) ? idx[serial] : {};
+    const keys = Object.keys(entries);
+    if(keys.length===0){
+      el.innerHTML = '<div style="text-align:center;padding:20px;color:#8b98a3;font-size:12px;">গত ৯০ দিনে দৈনন্দিন চেকলিস্টে কোনো অনিয়ম রেকর্ড হয়নি ✅</div>';
+      return;
+    }
+    const byCat = {};
+    keys.forEach(k=>{
+      const catId = k.split(':')[0];
+      if(!byCat[catId]) byCat[catId] = [];
+      byCat[catId].push(k);
+    });
+    const stu = (typeof allStudents!=='undefined') ? allStudents.find(s=>s.serial===serial) : null;
+    const nameEsc = stu ? stu.name.replace(/'/g,"\\'") : '';
+    const catOrder = ['namaz','cc','uf','ac','db','ln','dn','sc','es','nr','zl','id'];
+    const sortedCats = Object.keys(byCat).sort((a,b)=>{
+      const ia = catOrder.indexOf(a), ib = catOrder.indexOf(b);
+      return (ia<0?99:ia) - (ib<0?99:ib);
+    });
+    el.innerHTML = sortedCats.map(catId=>{
+      const catLabel = (typeof NC_CAT_LABELS!=='undefined' && NC_CAT_LABELS[catId]) ? NC_CAT_LABELS[catId] : catId;
+      const rows = byCat[catId].map(k=>{
+        const label = ncKeyToLabel(k);
+        const count = entries[k].length;
+        const labelEsc = label.replace(/'/g,"\\'");
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e2dbc720;cursor:pointer;" onclick="ncShowHistoryDates('${nameEsc}','${labelEsc}',${serial},'${k}')">
+          <span style="font-size:12px;color:#34444f;">${escHtml(label)}</span>
+          <span style="font-size:13px;font-weight:700;color:#c94545;">${bnDigits(count)} দিন ›</span>
+        </div>`;
+      }).join('');
+      return `<div style="padding:10px 14px 4px;">
+        <div style="font-size:11px;font-weight:700;color:#a9822f;margin-bottom:2px;">${catLabel}</div>
+        ${rows}
+      </div>`;
+    }).join('');
+  });
 }
 
 // ══ হোস্টেলের "দিন" চক্র — মাগরিব থেকে পরের দিন মাগরিব পর্যন্ত ══
@@ -5884,9 +5938,13 @@ const RANK_CONFIG = {
   },
   staff: {
     manualDifficultyWeight: 0.25, // আগে ছিল ০.৫০ (৫০%) — সাবজেক্টিভ/পক্ষপাতের ঝুঁকি কমাতে ২৫%-এ নামানো হলো
-    perfWeight: 0.5,   // আগে ছিল ০.৬৫ — ব্যবহারকারীর অনুরোধে (জুলাই ২০২৬) যথাযথভাবে রিপোর্ট প্রদানের গুরুত্ব বাড়াতে ৫০%-এ নামানো হলো
-    timelyWeight: 0.5, // আগে ছিল ০.৩৫ — এখন সময়মতো/সম্পূর্ণ রিপোর্ট প্রদানই সাফল্যের ৫০% নির্ধারণ করে (দৈনিক sk KPI-এর routineInput ৫০%-এর সাথে সামঞ্জস্যপূর্ণ)
-    obsWeight: 0.1,                // observation থাকলে চূড়ান্ত স্কোরে তার ওজন
+    // ══ ব্যবহারকারীর অনুরোধে পরিবর্তন (জুলাই ২০২৬): চূড়ান্ত স্কোরে সামগ্রিক অনুপাত এখন
+    // ছাত্র-পারফরম্যান্স ২০% : সময়মতো-ইনপুট ৭০% : পরিদর্শন ১০%। যেহেতু obsWeight (নিচে) আলাদাভাবে
+    // ১০% কেটে নেয়, বাকি ৯০%-এর মধ্যে perfWeight ও timelyWeight এমনভাবে সেট করা হয়েছে যাতে
+    // (১-obsWeight)×perfWeight = ০.২০ এবং (১-obsWeight)×timelyWeight = ০.৭০ হয় — অর্থাৎ perfWeight=২/৯, timelyWeight=৭/৯।
+    perfWeight: 2/9,   // আগে ছিল ০.৫ — সামগ্রিক স্কোরে ছাত্র-পারফরম্যান্সের ভূমিকা ২০%-এ নামানো হলো
+    timelyWeight: 7/9, // আগে ছিল ০.৫ — সামগ্রিক স্কোরে সময়মতো/সম্পূর্ণ রিপোর্ট প্রদানের ভূমিকা ৭০%-এ বাড়ানো হলো
+    obsWeight: 0.1,                // observation থাকলে চূড়ান্ত স্কোরে তার ওজন (অপরিবর্তিত — সামগ্রিক ১০%)
     minObsPerMonth: 1,             // প্রতি মাসে ন্যূনতম observation না থাকলে সতর্কতা ব্যাজ দেখানো হবে
     stalePenaltyPerItem: 4,        // "রিপোর্ট দেওয়া বাকি" ৩+ দিন অমীমাংসিত থাকা প্রতিটি আইটেমের জন্য পেনাল্টি (পয়েন্ট)
     maxStalePenalty: 30,           // সর্বোচ্চ কত পয়েন্ট পর্যন্ত এই পেনাল্টি কাটা যাবে
@@ -7692,10 +7750,10 @@ function showStaffProfile(staffId, fromPage){
   <div class="section-hd">⚠️ আচরণের ইতিহাস</div>
   <div class="stup-bh-card">
     <div class="stup-bh-hd">
-      <div class="stup-bh-title">সাম্প্রতিক রেকর্ড</div>
-      <div style="font-size:11px;color:#8b98a3" id="stup-bh-count">০ টি রেকর্ড</div>
+      <div class="stup-bh-title">দৈনন্দিন চেকলিস্টে অনিয়মের ইতিহাস</div>
+      <div style="font-size:11px;color:#8b98a3">গত ৯০ দিন</div>
     </div>
-    <div id="stup-bh-list"></div>
+    <div id="stup-irr-history-list"><div style="text-align:center;padding:20px;color:#8b98a3;font-size:12px;">⏳ লোড হচ্ছে...</div></div>
   </div>
 
   <!-- ছুটির ইতিহাস -->
@@ -8005,31 +8063,11 @@ function showStudentProfile(serial, fromPage){
     }
   }
 
-  // আচরণ রেকর্ড
-  const bhEl=document.getElementById("stup-bh-list");
-  const bhCntEl=document.getElementById("stup-bh-count");
-  if(bhCntEl) bhCntEl.textContent=bnST(bhRec.length)+" টি রেকর্ড";
-  if(bhEl){
-    if(bhRec.length===0){
-      bhEl.innerHTML='<div style="text-align:center;padding:20px;color:#8b98a3;font-size:12px;">কোনো আচরণ রেকর্ড নেই ✅</div>';
-    } else {
-      const catIco=(typeof BH_CAT_ICO!=="undefined")?BH_CAT_ICO:{};
-      const catLbl=(typeof BH_CAT_LABELS!=="undefined")?BH_CAT_LABELS:{};
-      bhEl.innerHTML=bhRec.map(r=>{
-        // প্রকৃত তারিখ (r.ts থেকে) — আগে সবসময় স্থির "এইমাত্র" লেখা দেখাত, প্রকৃত ঘটনার তারিখ বোঝা যেত না
-        const dateStr = r.ts ? ncFmtDateBn(fbDateKey(new Date(r.ts))) : (r.time||'');
-        return `
-        <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid #e2dbc720;">
-          <div style="font-size:18px;flex-shrink:0">${catIco[r.cat]||"📋"}</div>
-          <div style="flex:1">
-            <div style="font-size:12px;color:#34444f">${catLbl[r.cat]||r.cat} — ${escHtml(r.desc)}</div>
-            <div style="font-size:10px;color:#8b98a3;margin-top:3px">🕐 ${dateStr}</div>
-          </div>
-          <div style="font-size:12px;font-weight:700;padding:3px 8px;border-radius:20px;${r.type==="minus"?"background:#f9e3e3;color:#c94545":"background:#e2f3e6;color:#2f9e5c"}">${r.type==="minus"?"−":"+"}${bnST(r.pts)}</div>
-        </div>`;
-      }).join("");
-    }
-  }
+  // "সাম্প্রতিক রেকর্ড" তালিকা ব্যবহারকারীর অনুরোধে অপসারিত (অতিরিক্ত তথ্য, প্রয়োজন নেই)।
+  // এর বদলে নিচে stupRenderIrregularityHistory(s.serial) কল হয় — প্রতিটি নির্দিষ্ট
+  // দৈনন্দিন-চেকলিস্ট অনিয়মের (ফজর দেরি/কাজা, আরবি ক্লাস, পরিচ্ছন্নতা, ইউনিফর্ম ইত্যাদি)
+  // পৃথক গণনা ও তারিখসহ ইতিহাস দেখায়।
+  stupRenderIrregularityHistory(s.serial);
 
   // ছুটির ইতিহাস
   const lvEl=document.getElementById("stup-leave-list");
@@ -8881,10 +8919,10 @@ function rmShowToast(msg,type){ typedToast('rm-toast','rm-toast',msg,type); } //
     <div class="rk-kpi-breakdown">
       <div class="rk-kpi-title">📊 স্কোর কীভাবে হিসাব হয় (স্বচ্ছতার জন্য)</div>
       <div style="font-size:11px;color:#8aa0b3;line-height:1.9;">
-        🥇 <b style="color:#24313b">ছাত্রদের পারফরম্যান্স</b> (মূল ফ্যাক্টর) — ব্লকের ছাত্রদের ইতিবাচক/নেতিবাচক আচরণ রেকর্ডের অনুপাত, ব্লকের কঠিনতা দিয়ে সমন্বয় করা (কঠিন ব্লকে বোনাস, সহজ ব্লকে কড়াকড়ি — গুণক ০.৬৫×–১.৫৫×)<br/>
-        🕒 <b style="color:#24313b">সময়মতো ইনপুট</b> — নিজে কতবার সময়মতো রিপোর্ট জমা দিয়েছেন তার হার<br/>
-        🔍 <b style="color:#24313b">পরিদর্শন প্রতিবেদন</b> — হোস্টেল সুপারের সরেজমিন রেটিং<br/>
-        <span style="color:#a9822f">চূড়ান্ত স্কোর = ৯০% (ছাত্র-পারফরম্যান্স×কঠিনতা-গুণক + সময়মতো-ইনপুট, ৬৫:৩৫ অনুপাতে) + ১০% পরিদর্শন রেটিং</span><br/>
+        🥇 <b style="color:#24313b">সময়মতো ইনপুট</b> (মূল ফ্যাক্টর, ৭০%) — নিজে কতবার যথাযথ ও সময়মতো দৈনন্দিন কার্যাবলীর রিপোর্ট জমা দিয়েছেন তার হার<br/>
+        📊 <b style="color:#24313b">ছাত্রদের পারফরম্যান্স</b> (২০%) — ব্লকের ছাত্রদের ইতিবাচক/নেতিবাচক আচরণ রেকর্ডের অনুপাত, ব্লকের কঠিনতা দিয়ে সমন্বয় করা (কঠিন ব্লকে বোনাস, সহজ ব্লকে কড়াকড়ি — গুণক ০.৬৫×–১.৫৫×)<br/>
+        🔍 <b style="color:#24313b">পরিদর্শন প্রতিবেদন</b> (১০%) — হোস্টেল সুপারের সরেজমিন রেটিং<br/>
+        <span style="color:#a9822f">চূড়ান্ত স্কোর = ছাত্র-পারফরম্যান্স ২০% + সময়মতো-ইনপুট ৭০% + পরিদর্শন রেটিং ১০%</span><br/>
         <span style="color:#5c6f7a;">🛡️ ইনসাফ সুরক্ষা: কোনো ব্লকে রেকর্ড কম থাকলে (অল্প নমুনা) সেই ব্লকের স্কোর স্বয়ংক্রিয়ভাবে সবার গড়ের দিকে সমন্বিত হয় — যাতে ২-১টা ঘটনার ভিত্তিতে কাউকে অন্যায়ভাবে বেশি ভালো/খারাপ না দেখানো হয়।</span>
       </div>
     </div>
@@ -10081,6 +10119,31 @@ const NC_CAT_LABELS = {
   es:'📝 সন্ধ্যার পড়া', nr:'🌙 রাতের পড়া ও বিশ্রাম', ac:'📖 আরবি ক্লাস',
   sc:'🏥 অসুস্থতা ও ক্লাস ফাঁকি', db:'🍽️ ডাইনিং — সকালের নাস্তা',
 };
+
+// প্রতিটি ক্যাটাগরি-কী (ncMetaIssues-এর mkKey ফরম্যাট: "catId:prefix:optionKey") থেকে
+// প্রকৃত META অবজেক্ট খুঁজে বের করার ম্যাপ — ছাত্র-প্রোফাইলে পঠনযোগ্য লেবেল বানাতে ব্যবহৃত
+const NC_CAT_META_MAP = {
+  cc: ()=>(typeof CC_META!=='undefined'?CC_META:{}),
+  uf: ()=>(typeof UF_OPTIONS!=='undefined'?UF_OPTIONS:{}),
+  namaz: ()=>(typeof NAMAZ_STATUS!=='undefined'?NAMAZ_STATUS:{}),
+  zl: ()=>(typeof ZL_META!=='undefined'?ZL_META:{}),
+  id: ()=>(typeof ID_META!=='undefined'?ID_META:{}),
+  ln: ()=>(typeof LN_OPTIONS!=='undefined'?LN_OPTIONS:{}),
+  dn: ()=>(typeof DN_OPTIONS!=='undefined'?DN_OPTIONS:{}),
+  es: ()=>(typeof ES_OPTIONS!=='undefined'?ES_OPTIONS:{}),
+  nr: ()=>(typeof NR_META!=='undefined'?NR_META:{}),
+  ac: ()=>(typeof AC_OPTIONS!=='undefined'?AC_OPTIONS:{}),
+  sc: ()=>(typeof SC_META!=='undefined'?SC_META:{}),
+  db: ()=>(typeof DB_OPTIONS!=='undefined'?DB_OPTIONS:{}),
+};
+function ncKeyToLabel(key){
+  const parts = key.split(':');
+  const catId = parts[0], prefix = parts[1], optKey = parts.slice(2).join(':');
+  const metaGetter = NC_CAT_META_MAP[catId];
+  const meta = metaGetter ? metaGetter() : null;
+  const optLabel = (meta && meta[optKey] && meta[optKey].label) ? meta[optKey].label : optKey;
+  return prefix ? (prefix+' — '+optLabel) : optLabel;
+}
 
 function ncHistoryDatesFor(serial, key){
   if(!ncHistoryIndex || !ncHistoryIndex[serial] || !ncHistoryIndex[serial][key]) return [];
