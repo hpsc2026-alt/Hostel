@@ -7664,68 +7664,6 @@ function showStaffProfile(staffId, fromPage){
     <div class="stup-info-row"><span class="stup-info-ico">📞</span><span class="stup-info-lbl">অভিভাবক</span><span class="stup-info-val" id="si-guardian" style="color:#8b98a3">যোগ করা হয়নি</span></div>
   </div>
 
-  <!-- পরিচ্ছন্নতা ও সকালের পড়ার ইতিহাস -->
-  <div class="section-hd">🧹 পরিচ্ছন্নতা ও সকালের পড়ার ইতিহাস</div>
-  <div class="stup-bh-card">
-    <div class="stup-bh-hd">
-      <div class="stup-bh-title">সামগ্রিক পরিসংখ্যান</div>
-    </div>
-    <div style="padding:12px 16px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e2dbc720;">
-        <span style="font-size:12px;color:#34444f;">🧺 অপরিচ্ছন্ন ছিল</span>
-        <span id="stup-cc-unclean-count" style="font-size:13px;font-weight:700;color:#c94545;">০ দিন</span>
-      </div>
-      <div id="stup-cc-unclean-dates" style="font-size:10px;color:#8b98a3;padding:4px 0 8px;line-height:1.6;"></div>
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e2dbc720;">
-        <span style="font-size:12px;color:#34444f;">📴 সকালে পড়তে বসেনি</span>
-        <span id="stup-cc-notstudy-count" style="font-size:13px;font-weight:700;color:#c94545;">০ দিন</span>
-      </div>
-      <div id="stup-cc-notstudy-dates" style="font-size:10px;color:#8b98a3;padding:4px 0 0;line-height:1.6;"></div>
-    </div>
-  </div>
-
-  <!-- নামাজের ইতিহাস (দেরি ও কাজা) -->
-  <div class="section-hd">🕌 নামাজের ইতিহাস (দেরি ও কাজা)</div>
-  <div class="stup-bh-card">
-    <div class="stup-bh-hd">
-      <div class="stup-bh-title">সামগ্রিক পরিসংখ্যান</div>
-    </div>
-    <div style="padding:12px 16px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e2dbc720;">
-        <span style="font-size:12px;color:#34444f;">⏰ ফজর নামাজে দেরি</span>
-        <span id="stup-ns-fajr-late-count" style="font-size:13px;font-weight:700;color:#a9822f;">০ দিন</span>
-      </div>
-      <div id="stup-ns-fajr-late-dates" style="font-size:10px;color:#8b98a3;padding:4px 0 8px;line-height:1.6;"></div>
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e2dbc720;">
-        <span style="font-size:12px;color:#34444f;">❌ ফজর নামাজ কাজা</span>
-        <span id="stup-ns-fajr-qaza-count" style="font-size:13px;font-weight:700;color:#c94545;">০ দিন</span>
-      </div>
-      <div id="stup-ns-fajr-qaza-dates" style="font-size:10px;color:#8b98a3;padding:4px 0 8px;line-height:1.6;"></div>
-
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e2dbc720;">
-        <span style="font-size:12px;color:#34444f;">⏰ আসর নামাজে দেরি</span>
-        <span id="stup-ns-asr-late-count" style="font-size:13px;font-weight:700;color:#a9822f;">০ দিন</span>
-      </div>
-      <div id="stup-ns-asr-late-dates" style="font-size:10px;color:#8b98a3;padding:4px 0 8px;line-height:1.6;"></div>
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e2dbc720;">
-        <span style="font-size:12px;color:#34444f;">❌ আসর নামাজ কাজা</span>
-        <span id="stup-ns-asr-qaza-count" style="font-size:13px;font-weight:700;color:#c94545;">০ দিন</span>
-      </div>
-      <div id="stup-ns-asr-qaza-dates" style="font-size:10px;color:#8b98a3;padding:4px 0 8px;line-height:1.6;"></div>
-
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e2dbc720;">
-        <span style="font-size:12px;color:#34444f;">⏰ মাগরিব নামাজে দেরি</span>
-        <span id="stup-ns-maghrib-late-count" style="font-size:13px;font-weight:700;color:#a9822f;">০ দিন</span>
-      </div>
-      <div id="stup-ns-maghrib-late-dates" style="font-size:10px;color:#8b98a3;padding:4px 0 8px;line-height:1.6;"></div>
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e2dbc720;">
-        <span style="font-size:12px;color:#34444f;">❌ মাগরিব নামাজ কাজা</span>
-        <span id="stup-ns-maghrib-qaza-count" style="font-size:13px;font-weight:700;color:#c94545;">০ দিন</span>
-      </div>
-      <div id="stup-ns-maghrib-qaza-dates" style="font-size:10px;color:#8b98a3;padding:4px 0 0;line-height:1.6;"></div>
-    </div>
-  </div>
-
   <!-- অসুস্থতার ইতিহাস -->
   <div class="section-hd">🏥 অসুস্থতার ইতিহাস</div>
   <div class="stup-bh-card">
@@ -7981,45 +7919,6 @@ function showStudentProfile(serial, fromPage){
   Object.entries(infoMap).forEach(([id,val])=>{
     const el=document.getElementById(id);
     if(el) el.textContent=val;
-  });
-
-  // পরিচ্ছন্নতা ও সকালের পড়ার ইতিহাস — Firebase-এ প্রকৃতভাবে সংরক্ষিত ডেটা থেকে, সময়-উইন্ডো অনুযায়ী ফিল্টার করে
-  const ccUnCntEl=document.getElementById("stup-cc-unclean-count");
-  const ccUnDatesEl=document.getElementById("stup-cc-unclean-dates");
-  const ccNsCntEl=document.getElementById("stup-cc-notstudy-count");
-  const ccNsDatesEl=document.getElementById("stup-cc-notstudy-dates");
-  if(ccUnCntEl){ ccUnCntEl.textContent="…"; ccNsCntEl.textContent="…"; }
-  ccGetStudentRealHistory(s.serial).then(h=>{
-    if(!ccUnCntEl || !ccUnCntEl.isConnected) return;
-    const uncleanInWin = h.uncleanISO.filter(iso=>iso>=winB.startISO && iso<=winB.endISO).sort();
-    const notStudyInWin = h.notStudyISO.filter(iso=>iso>=winB.startISO && iso<=winB.endISO).sort();
-    ccUnCntEl.textContent = bnST(uncleanInWin.length)+" দিন";
-    ccUnDatesEl.textContent = uncleanInWin.length ? ('তারিখ: '+uncleanInWin.map(isoToBnDate).join(', ')) : 'কোনো রেকর্ড নেই ✅';
-    ccNsCntEl.textContent = bnST(notStudyInWin.length)+" দিন";
-    ccNsDatesEl.textContent = notStudyInWin.length ? ('তারিখ: '+notStudyInWin.map(isoToBnDate).join(', ')) : 'কোনো রেকর্ড নেই ✅';
-  });
-
-  // নামাজের ইতিহাস (দেরি ও কাজা) — একইভাবে Firebase-এর প্রকৃত ডেটা থেকে
-  const nsPrayerIds = {'ফজর':'fajr','আসর':'asr','মাগরিব':'maghrib'};
-  Object.values(nsPrayerIds).forEach(prId=>{
-    const el=document.getElementById('stup-ns-'+prId+'-late-count');
-    if(el) el.textContent="…";
-  });
-  nsGetStudentRealHistory(s.serial).then(nsH=>{
-    Object.entries(nsPrayerIds).forEach(([prName,prId])=>{
-      const lateCntEl=document.getElementById('stup-ns-'+prId+'-late-count');
-      if(!lateCntEl || !lateCntEl.isConnected) return;
-      const lateDatesEl=document.getElementById('stup-ns-'+prId+'-late-dates');
-      const qazaCntEl=document.getElementById('stup-ns-'+prId+'-qaza-count');
-      const qazaDatesEl=document.getElementById('stup-ns-'+prId+'-qaza-dates');
-      const prH = nsH[prName] || {lateISO:[], qazaISO:[]};
-      const lateInWin = prH.lateISO.filter(iso=>iso>=winB.startISO && iso<=winB.endISO).sort();
-      const qazaInWin = prH.qazaISO.filter(iso=>iso>=winB.startISO && iso<=winB.endISO).sort();
-      lateCntEl.textContent = bnST(lateInWin.length)+" দিন";
-      lateDatesEl.textContent = lateInWin.length ? ('তারিখ: '+lateInWin.map(isoToBnDate).join(', ')) : 'কোনো রেকর্ড নেই ✅';
-      qazaCntEl.textContent = bnST(qazaInWin.length)+" দিন";
-      qazaDatesEl.textContent = qazaInWin.length ? ('তারিখ: '+qazaInWin.map(isoToBnDate).join(', ')) : 'কোনো রেকর্ড নেই ✅';
-    });
   });
 
   // অসুস্থতার ইতিহাস (স্বাস্থ্য রেকর্ড থেকে)
