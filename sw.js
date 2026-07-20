@@ -1,53 +1,54 @@
-// ══ HMS হেরিটেজ — সার্ভিস ওয়ার্কার ══
-// প্রতিবার অ্যাপে বড় পরিবর্তন আনলে CACHE_NAME-এর ভার্সন নম্বর বাড়িয়ে দিন
-// (যেমন v1 → v2), তাহলে পুরনো ক্যাশে বাতিল হয়ে নতুন ফাইল সবার কাছে পৌঁছাবে।
-const CACHE_NAME = "hms-heritage-cache-v1";
+/* ── হোস্টেল ম্যানেজমেন্ট সিস্টেম — Service Worker (রিফ্যাক্টর ধাপ ৬) ──
+   কৌশল: অ্যাপ-শেল (index.html) ও CDN স্ক্রিপ্ট ক্যাশ করা হয়,
+   ফলে ইন্টারনেট না থাকলেও অ্যাপ খুলবে; Firebase নিজস্ব রিয়েল-টাইম
+   সংযোগ ব্যবস্থাপনা করে, তাই ডেটা-রিকোয়েস্ট ক্যাশ করা হয় না।
+   নতুন ভার্সন ডিপ্লয়ের সময় CACHE_NAME-এর নম্বর বাড়ান। */
 
-const APP_SHELL = [
-  "./",
-  "./index.html",
-  "./manifest.json",
-  "./icon-192.png",
-  "./icon-512.png",
+const CACHE_NAME = 'hms-shell-v1';
+const SHELL = [
+  './',
+  './index.html',
+  'https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js',
+  'https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js',
 ];
 
-// ইনস্টলেশন — মূল ফাইলগুলো ক্যাশে রাখা
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).catch(() => {})
-  );
-  self.skipWaiting();
-});
-
-// অ্যাক্টিভেশন — পুরনো ক্যাশে মুছে ফেলা
-self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))
-      )
-    )
-  );
-  self.clients.claim();
-});
-
-// ফেচ — নেটওয়ার্ক আগে চেষ্টা করবে, না পেলে ক্যাশ থেকে দেখাবে (অফলাইন সাপোর্ট)
-self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") return;
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => {});
-        return response;
-      })
-      .catch(() => caches.match(event.request).then((cached) => cached || caches.match("./index.html")))
+self.addEventListener('install', e => {
+  e.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(c => c.addAll(SHELL).catch(()=>{}))
+      .then(() => self.skipWaiting())
   );
 });
 
-// নতুন ভার্সন সাথে সাথে চালু করার নির্দেশ (অ্যাপ থেকে পাঠানো হয়)
-self.addEventListener("message", (event) => {
-  if (event.data === "SKIP_WAITING") {
-    self.skipWaiting();
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+    ).then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', e => {
+  const url = new URL(e.request.url);
+
+  // Firebase রিয়েল-টাইম/ডেটা রিকোয়েস্ট — কখনো ক্যাশ নয়
+  if (url.hostname.includes('firebasedatabase.app') || url.hostname.includes('firebaseio.com')) return;
+
+  // অ্যাপ-শেল ও CDN: network-first, ব্যর্থ হলে ক্যাশ (অফলাইন fallback)
+  if (e.request.mode === 'navigate' || SHELL.some(s => e.request.url.includes(s.replace('./','')))) {
+    e.respondWith(
+      fetch(e.request)
+        .then(res => {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then(c => c.put(e.request, copy)).catch(()=>{});
+          return res;
+        })
+        .catch(() => caches.match(e.request).then(r => r || caches.match('./index.html')))
+    );
   }
+});
+
+// অ্যাপের আপডেট-ব্যানার "এখনই আপডেট করুন" চাপলে এই মেসেজ আসে
+self.addEventListener('message', e => {
+  if (e.data === 'SKIP_WAITING') self.skipWaiting();
 });
