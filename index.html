@@ -933,7 +933,8 @@ body{font-family:'Segoe UI',sans-serif;background:#faf8f2;color:#24313b;min-heig
 -->
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
-<!-- firebase-auth-compat.js অপসারিত: কোথাও ব্যবহৃত হচ্ছিল না (ডেড ডিপেন্ডেন্সি)। ধাপ ১-এ Firebase Auth চালু করার সময় পুনরায় যোগ হবে। -->
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<!-- firebase-auth-compat.js পুনরায় যোগ করা হলো: HAIS প্রজেক্টে anonymous sign-in করার জন্য প্রয়োজন (হোমওয়ার্ক রিপোর্ট পড়তে) -->
 <script>
 // ── Firebase কনফিগারেশন (এখানে আপনার প্রজেক্টের মান বসান) ──
 const firebaseConfig = {
@@ -961,7 +962,7 @@ try{
 }
 
 // ── কম্বাইন্ড অ্যাপের জন্য HAIS প্রজেক্টে রিড-অনলি সংযোগ (আজ কারা পড়া করেনি জানতে) ──
-let haisApp = null, haisDb = null;
+let haisApp = null, haisDb = null, haisAuthReady = false;
 try{
   haisApp = firebase.initializeApp({
     apiKey: "AIzaSyAfSu5ihLHmJNtwQkDJV28sicPRnUFGw70",
@@ -969,6 +970,14 @@ try{
     projectId: "abu-sayed-6c6b9"
   }, "haisReadOnly");
   haisDb = haisApp.database();
+  // HAIS-এর Rules-এ 'auth != null' লাগে বলে anonymous sign-in করা হচ্ছে (কোনো পাসওয়ার্ড/ইমেইল লাগে না)
+  haisApp.auth().signInAnonymously()
+    .then(()=>{
+      haisAuthReady = true;
+      console.log("✅ HAIS-এ anonymous সংযোগ সফল।");
+      if(document.getElementById('page-dashboard')?.classList.contains('active') && typeof renderHaisHomeworkWidget==='function') renderHaisHomeworkWidget();
+    })
+    .catch(e=>console.error("HAIS anonymous sign-in ব্যর্থ (Firebase Console-এ Anonymous sign-in চালু আছে কিনা দেখুন):", e));
 }catch(e){
   console.error("HAIS রিড-অনলি সংযোগ ব্যর্থ:", e);
 }
