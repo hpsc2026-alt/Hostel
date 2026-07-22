@@ -4924,8 +4924,12 @@ function renderHaisHomeworkWidget(){
 
     const bySubject = {};
     todayRecs.forEach(rec=>{
-      const hw = rec.homework || {};
-      Object.entries(hw).forEach(([name, status])=>{
+      // HAIS হোমওয়ার্ক/হাজিরা ডেটা Firebase-এ array-of-{name,status} আকারে সংরক্ষণ করে (ম্যাপ না)
+      const hwRaw = rec.homework;
+      const hwPairs = Array.isArray(hwRaw)
+        ? hwRaw.filter(p=>p && p.name)
+        : Object.entries(hwRaw||{}).map(([name,status])=>({name,status})); // পুরনো ফরম্যাট থাকলেও কাজ করবে
+      hwPairs.forEach(({name, status})=>{
         if(status !== 'notdone') return;
         notdoneRawCount++;
         const key0 = String(name).trim().toUpperCase();
