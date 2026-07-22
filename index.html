@@ -4886,20 +4886,31 @@ function renderHaisHomeworkWidget(){
   const el = document.getElementById('dash-hais-homework-widget');
   if(!el || !haisDb) return;
 
+  el.innerHTML = `<div style="margin:0 16px 14px;padding:10px 14px;background:#fff;border:1px solid #ddd;border-radius:12px;font-size:12px;color:#6b6b8a;">⏳ HAIS থেকে হোমওয়ার্ক তথ্য লোড হচ্ছে...</div>`;
+
   const raw = localStorage.getItem('hms_user');
   const user = raw ? JSON.parse(raw) : {id:'demo', role:'super'};
-  // এই ব্যবহারকারী যদি হাউস টিউটর হন, তার নিজস্ব ব্লক বের করা হচ্ছে — শুধু সেই ব্লকের ছাত্ররাই দেখবেন
   const myBlock = (user.role === 'asst') ? (ASST_BLOCK_MAP[user.id] || null) : null;
 
+  let attErr = null, actErr = null;
   Promise.all([
-    haisDb.ref('hais_data_v3/studentAttendance_v2').once('value').catch(()=>null),
-    haisDb.ref('hais_data_v3/homeworkActions_v2').once('value').catch(()=>null),
+    haisDb.ref('hais_data_v3/studentAttendance_v2').once('value').catch(e=>{ attErr = e; return null; }),
+    haisDb.ref('hais_data_v3/homeworkActions_v2').once('value').catch(e=>{ actErr = e; return null; }),
   ]).then(([attSnap, actSnap])=>{
+
+    if(attErr){
+      el.innerHTML = `<div style="margin:0 16px 14px;padding:10px 14px;background:#fcebeb;border:1px solid #a32d2d40;border-radius:12px;font-size:11.5px;color:#a32d2d;">
+        ⚠️ HAIS থেকে হোমওয়ার্ক তথ্য পড়া যায়নি।<br>
+        কারণ: ${attErr.code || attErr.message || attErr}<br>
+        <span style="font-size:10px;color:#854f0b;">চেক করুন: (১) Firebase Console → abu-sayed-6c6b9 → Authentication → Anonymous চালু আছে কিনা, (২) Rules-এ studentAttendance_v2 পাথে read অনুমতি আছে কিনা।</span>
+      </div>`;
+      return;
+    }
+
     const todayISO = new Date().toISOString().slice(0,10);
     const attRaw = attSnap ? Object.values(attSnap.val()||{}) : [];
-    const actions = actSnap ? Object.values(actSnap.val()||{}) : [];
+    const actions = (actSnap && !actErr) ? Object.values(actSnap.val()||{}) : [];
 
-    // ছাত্রের নাম → ব্লক ম্যাপ (assignRooms() থেকে ইতিমধ্যে গণনা করা)
     if(allStudents.length===0) assignRooms();
     const nameToBlock = {};
     allStudents.forEach(s=> nameToBlock[String(s.name).trim().toUpperCase()] = s.block);
@@ -4907,16 +4918,21 @@ function renderHaisHomeworkWidget(){
     const latestAction = name => actions.filter(a=>a.studentName===name)
       .sort((a,b)=> new Date(b.setAt) - new Date(a.setAt))[0] || null;
 
+    // ডায়াগনস্টিক গণনা
+    const todayRecs = attRaw.filter(r=>r.isoDate===todayISO);
+    let notdoneRawCount = 0, matchedHostelCount = 0;
+
     const bySubject = {};
-    attRaw.forEach(rec=>{
-      if(rec.isoDate !== todayISO) return;
+    todayRecs.forEach(rec=>{
       const hw = rec.homework || {};
       Object.entries(hw).forEach(([name, status])=>{
         if(status !== 'notdone') return;
+        notdoneRawCount++;
         const key0 = String(name).trim().toUpperCase();
         const blk = nameToBlock[key0];
-        if(!blk) return; // হোস্টেলবাসী না (রোস্টারে নেই), তাই বাদ
-        if(myBlock && blk !== myBlock) return; // হাউস টিউটর হলে শুধু নিজের ব্লক দেখবেন
+        if(!blk) return;
+        matchedHostelCount++;
+        if(myBlock && blk !== myBlock) return;
         const key = `${rec.cls} — ${rec.subject}`;
         (bySubject[key] = bySubject[key] || []).push({name, blk});
       });
@@ -4926,7 +4942,11 @@ function renderHaisHomeworkWidget(){
     const total = groups.reduce((s,[,arr])=>s+arr.length, 0);
 
     if(total === 0){
-      el.innerHTML = '';
+      el.innerHTML = `<div style="margin:0 16px 14px;padding:10px 14px;background:#fff8e1;border:1px solid #e6cf9e;border-radius:12px;font-size:11.5px;color:#854f0b;">
+        ℹ️ HAIS-এর সাথে সংযোগ সফল হয়েছে, কিন্তু দেখানোর মতো কিছু পাওয়া যায়নি।<br>
+        ডায়াগনস্টিক তথ্য: আজকের রেকর্ড ${todayRecs.length}টি • মোট "পড়া করেনি" এন্ট্রি ${notdoneRawCount}টি • হোস্টেল রোস্টারে মিলেছে ${matchedHostelCount}টি${myBlock?(' • আপনার ব্লক ('+myBlock+')-এ মিলেছে '+total+'টি'):''}।<br>
+        <span style="font-size:10px;">যদি "মোট এন্ট্রি" সংখ্যা বড় হয় কিন্তু "মিলেছে" ০ হয়, তাহলে সম্ভবত ছাত্রদের নামের বানান হোস্টেল ও HAIS-এ ভিন্ন।</span>
+      </div>`;
       return;
     }
 
@@ -4962,8 +4982,7 @@ function renderHaisHomeworkWidget(){
         <div style="font-size:10px;color:#999;margin-top:6px;">ℹ️ এটা শুধু তথ্যের জন্য — ব্যবস্থা নেওয়ার স্ট্যাটাস একাডেমিক শিক্ষকরাই HAIS অ্যাপ থেকে হালনাগাদ করেন।</div>
       </div>`;
   }).catch(e=>{
-    console.error('HAIS হোমওয়ার্ক উইজেট লোড ব্যর্থ:', e);
-    el.innerHTML = '';
+    el.innerHTML = `<div style="margin:0 16px 14px;padding:10px 14px;background:#fcebeb;border:1px solid #a32d2d40;border-radius:12px;font-size:11.5px;color:#a32d2d;">⚠️ অপ্রত্যাশিত ত্রুটি: ${e.message||e}</div>`;
   });
 }
 
