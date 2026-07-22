@@ -960,6 +960,19 @@ try{
   console.error("Firebase চালু করা যায়নি:", e);
 }
 
+// ── কম্বাইন্ড অ্যাপের জন্য HAIS প্রজেক্টে রিড-অনলি সংযোগ (আজ কারা পড়া করেনি জানতে) ──
+let haisApp = null, haisDb = null;
+try{
+  haisApp = firebase.initializeApp({
+    apiKey: "AIzaSyAfSu5ihLHmJNtwQkDJV28sicPRnUFGw70",
+    databaseURL: "https://abu-sayed-6c6b9-default-rtdb.firebaseio.com",
+    projectId: "abu-sayed-6c6b9"
+  }, "haisReadOnly");
+  haisDb = haisApp.database();
+}catch(e){
+  console.error("HAIS রিড-অনলি সংযোগ ব্যর্থ:", e);
+}
+
 // ── সাধারণ Firebase সহায়ক ফাংশন (সব ফিচার এই একই ফাংশনগুলো ব্যবহার করবে) ──
 function fbTodayKey(){
   const d = new Date();
@@ -1413,6 +1426,7 @@ function effectiveUsers(role){
 <!-- ব্লক কার্ড -->
 <div class="section-header">🏠 ব্লক অনুযায়ী ছাত্র তালিকা</div>
 <div id="dash-block-cards" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px 14px;"></div>
+<div id="dash-hais-homework-widget"></div>
 <div id="dash-rank-widget" style="margin:0 16px 14px;"></div>
 <div id="dash-noncompliance-widget"></div>
 <div id="dash-suggestions-widget"></div>
@@ -4858,6 +4872,92 @@ function buildDynamicAlerts(){
 // ── স্টাফ ডেটা (আগে স্থির/ডেমো ডেটা ছিল — এখন আজকের real সময়মতো-রিপোর্ট লগ থেকে প্রতিটি ব্লকের হাউজ টিউটরের বর্তমান স্ট্যাটাস বের করা হয়) ──
 
 // ── পেজ রেন্ডার ──
+// ── HAIS থেকে "আজ পড়া করে আসেনি" রিপোর্ট টেনে হোস্টেল ড্যাশবোর্ডে দেখানো (রিড-অনলি) ──
+function renderHaisHomeworkWidget(){
+  const el = document.getElementById('dash-hais-homework-widget');
+  if(!el || !haisDb) return;
+
+  const raw = localStorage.getItem('hms_user');
+  const user = raw ? JSON.parse(raw) : {id:'demo', role:'super'};
+  // এই ব্যবহারকারী যদি হাউস টিউটর হন, তার নিজস্ব ব্লক বের করা হচ্ছে — শুধু সেই ব্লকের ছাত্ররাই দেখবেন
+  const myBlock = (user.role === 'asst') ? (ASST_BLOCK_MAP[user.id] || null) : null;
+
+  Promise.all([
+    haisDb.ref('hais_data_v3/studentAttendance_v2').once('value').catch(()=>null),
+    haisDb.ref('hais_data_v3/homeworkActions_v2').once('value').catch(()=>null),
+  ]).then(([attSnap, actSnap])=>{
+    const todayISO = new Date().toISOString().slice(0,10);
+    const attRaw = attSnap ? Object.values(attSnap.val()||{}) : [];
+    const actions = actSnap ? Object.values(actSnap.val()||{}) : [];
+
+    // ছাত্রের নাম → ব্লক ম্যাপ (assignRooms() থেকে ইতিমধ্যে গণনা করা)
+    if(allStudents.length===0) assignRooms();
+    const nameToBlock = {};
+    allStudents.forEach(s=> nameToBlock[String(s.name).trim().toUpperCase()] = s.block);
+
+    const latestAction = name => actions.filter(a=>a.studentName===name)
+      .sort((a,b)=> new Date(b.setAt) - new Date(a.setAt))[0] || null;
+
+    const bySubject = {};
+    attRaw.forEach(rec=>{
+      if(rec.isoDate !== todayISO) return;
+      const hw = rec.homework || {};
+      Object.entries(hw).forEach(([name, status])=>{
+        if(status !== 'notdone') return;
+        const key0 = String(name).trim().toUpperCase();
+        const blk = nameToBlock[key0];
+        if(!blk) return; // হোস্টেলবাসী না (রোস্টারে নেই), তাই বাদ
+        if(myBlock && blk !== myBlock) return; // হাউস টিউটর হলে শুধু নিজের ব্লক দেখবেন
+        const key = `${rec.cls} — ${rec.subject}`;
+        (bySubject[key] = bySubject[key] || []).push({name, blk});
+      });
+    });
+
+    const groups = Object.entries(bySubject);
+    const total = groups.reduce((s,[,arr])=>s+arr.length, 0);
+
+    if(total === 0){
+      el.innerHTML = '';
+      return;
+    }
+
+    const rowsHtml = groups.map(([subjKey, items])=>{
+      const itemsHtml = items.map(({name:nm, blk})=>{
+        const la = latestAction(nm);
+        const statusHtml = la
+          ? `<span style="font-size:10px;font-weight:700;color:${la.status==='resolved'?'#3b6d11':'#854f0b'}">${la.status==='resolved'?'✅ ব্যবস্থা নেওয়া হয়েছে':'🟡 ব্যবস্থা চলমান'}</span>`
+          : `<span style="font-size:10px;color:#a32d2d;font-weight:600">⏳ এখনো ব্যবস্থা নেওয়া হয়নি</span>`;
+        const blockTag = myBlock ? '' : `<span style="font-size:9px;color:#6b6b8a;margin-right:6px;">ব্লক ${blk}</span>`;
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(0,0,0,0.08);flex-wrap:wrap;gap:4px;">
+          <span style="font-size:12px;">${nm}</span><span>${blockTag}${statusHtml}</span>
+        </div>`;
+      }).join('');
+      return `<div style="margin-bottom:10px;">
+        <div style="font-size:12px;font-weight:700;color:#1a1a2e;margin-bottom:4px;">${subjKey} (${items.length} জন)</div>
+        ${itemsHtml}
+      </div>`;
+    }).join('');
+
+    const titleSuffix = myBlock ? ` — আপনার ব্লক ${myBlock}` : ' (সকল ব্লক)';
+
+    el.innerHTML = `
+      <div style="margin:0 16px 14px;padding:14px;background:#fff;border:1px solid #a32d2d40;border-radius:12px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <span style="font-size:18px;">📕</span>
+          <div>
+            <div style="font-weight:700;color:#a32d2d;font-size:13px;">আজ একাডেমিক ক্লাসে পড়া করেনি${titleSuffix}</div>
+            <div style="font-size:11px;color:#6b6b8a;">${total} জন শিক্ষার্থী</div>
+          </div>
+        </div>
+        ${rowsHtml}
+        <div style="font-size:10px;color:#999;margin-top:6px;">ℹ️ এটা শুধু তথ্যের জন্য — ব্যবস্থা নেওয়ার স্ট্যাটাস একাডেমিক শিক্ষকরাই HAIS অ্যাপ থেকে হালনাগাদ করেন।</div>
+      </div>`;
+  }).catch(e=>{
+    console.error('HAIS হোমওয়ার্ক উইজেট লোড ব্যর্থ:', e);
+    el.innerHTML = '';
+  });
+}
+
 function renderDashboard(){
   const raw = localStorage.getItem('hms_user');
   const user = raw ? JSON.parse(raw) : {id:'demo',name:'ডেমো',role:'super',roleLabel:'হোস্টেল সুপার'};
@@ -4893,6 +4993,9 @@ function renderDashboard(){
         <div class="rb-desc">${b.desc}</div>
       </div>
     </div>`;
+
+  // HAIS থেকে "আজ পড়া করেনি" রিপোর্ট (রিড-অনলি)
+  renderHaisHomeworkWidget();
 
   // স্ট্যাটস
   const sg = document.getElementById('statsGrid');
