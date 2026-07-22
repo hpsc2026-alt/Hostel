@@ -9481,6 +9481,18 @@ async function rkBuildScoresReal(period){
     });
   });
 
+  // ── কম্বাইন্ড/ইউনিফাইড অ্যাপের জন্য চূড়ান্ত স্কোর প্রকাশ (নীরবে, ব্যাকগ্রাউন্ডে) ──
+  // এখানে ব্যবহৃত সূত্র/হিসাব ভবিষ্যতে যেভাবেই বদলাক না কেন, এই একটা লাইনই যথেষ্ট —
+  // যা-ই চূড়ান্ত 'total' হয়, সেটাই প্রকাশ পাবে। UI-তে এর কোনো প্রভাব নেই।
+  if(typeof fbSet==='function'){
+    const _sharedScores = {};
+    rows.forEach(r=>{
+      const _key = String(r.name||'').trim().toUpperCase().replace(/\./g,'').replace(/\s+/g,'_');
+      if(_key) _sharedScores[_key] = { score:r.total, name:r.name, cls:r.cls, period, updatedAt:Date.now() };
+    });
+    fbSet('student_rank_scores', _sharedScores);
+  }
+
   return rows;
 }
 let r_overallTotal=0;
