@@ -4882,6 +4882,37 @@ function buildDynamicAlerts(){
 
 // ── পেজ রেন্ডার ──
 // ── HAIS থেকে "আজ পড়া করে আসেনি" রিপোর্ট টেনে হোস্টেল ড্যাশবোর্ডে দেখানো (রিড-অনলি) ──
+// ── HAIS-এর "পড়া করেনি" তালিকা থেকে একজন ছাত্রকে "সম্পন্ন হয়েছে" হিসেবে চিহ্নিত করা ──
+// (HAIS নিজেই যে ফরম্যাটে homeworkActions_v2 এন্ট্রি রাখে, ঠিক সেই ফরম্যাটেই লেখা হচ্ছে)
+function hwMarkResolved(studentName, btnEl){
+  if(!haisDb){ alert('HAIS সংযোগ প্রস্তুত নয়, একটু পর আবার চেষ্টা করুন।'); return; }
+  const raw = localStorage.getItem('hms_user');
+  const user = raw ? JSON.parse(raw) : {name:'হোস্টেল স্টাফ'};
+  const rowEl = btnEl.closest('div[style*="justify-content:space-between"]');
+  if(rowEl){ rowEl.style.opacity='0.4'; }
+  if(btnEl){ btnEl.disabled=true; btnEl.textContent='...'; }
+
+  const actionId = Date.now().toString()+'_hwa'+Math.random().toString(36).slice(2,5);
+  const action = {
+    id: actionId,
+    studentName: studentName,
+    status: 'resolved',
+    setBy: (user.name||'হোস্টেল স্টাফ')+' (হোস্টেল)',
+    setAt: new Date().toISOString(),
+  };
+  haisDb.ref('hais_data_v3/homeworkActions_v2/'+actionId).set(action)
+    .then(()=>{
+      if(rowEl) rowEl.remove();
+      // hostelHwResolutions নোডে নিজেদের ডেটাবেসেও ব্যাকআপ রাখা হচ্ছে (KPI/ইতিহাসে ব্যবহারের জন্য)
+      if(typeof fbPush==='function') fbPush('hostelHwResolutions', action);
+    })
+    .catch(e=>{
+      alert('সংরক্ষণ ব্যর্থ হয়েছে: '+(e.code||e.message||e));
+      if(rowEl) rowEl.style.opacity='1';
+      if(btnEl){ btnEl.disabled=false; btnEl.textContent='✓ সম্পন্ন হয়েছে'; }
+    });
+}
+
 function renderHaisHomeworkWidget(){
   const el = document.getElementById('dash-hais-homework-widget');
   if(!el || !haisDb) return;
@@ -4937,6 +4968,8 @@ function renderHaisHomeworkWidget(){
         if(!blk) return;
         matchedHostelCount++;
         if(myBlock && blk !== myBlock) return;
+        const la = latestAction(name);
+        if(la && la.status === 'resolved') return; // হোস্টেল/একাডেমিক আগেই সমাধান করে দিয়েছে — আর দেখাবে না
         const key = `${rec.cls} — ${rec.subject}`;
         (bySubject[key] = bySubject[key] || []).push({name, blk});
       });
@@ -4947,22 +4980,22 @@ function renderHaisHomeworkWidget(){
 
     if(total === 0){
       el.innerHTML = `<div style="margin:0 16px 14px;padding:10px 14px;background:#fff8e1;border:1px solid #e6cf9e;border-radius:12px;font-size:11.5px;color:#854f0b;">
-        ℹ️ HAIS-এর সাথে সংযোগ সফল হয়েছে, কিন্তু দেখানোর মতো কিছু পাওয়া যায়নি।<br>
-        ডায়াগনস্টিক তথ্য: আজকের রেকর্ড ${todayRecs.length}টি • মোট "পড়া করেনি" এন্ট্রি ${notdoneRawCount}টি • হোস্টেল রোস্টারে মিলেছে ${matchedHostelCount}টি${myBlock?(' • আপনার ব্লক ('+myBlock+')-এ মিলেছে '+total+'টি'):''}।<br>
-        <span style="font-size:10px;">যদি "মোট এন্ট্রি" সংখ্যা বড় হয় কিন্তু "মিলেছে" ০ হয়, তাহলে সম্ভবত ছাত্রদের নামের বানান হোস্টেল ও HAIS-এ ভিন্ন।</span>
+        ✅ আজ ${myBlock?('আপনার ব্লক ('+myBlock+')-এর'):''} সব ছাত্রের হোমওয়ার্ক ঠিক আছে, অথবা সব সমাধান হয়ে গেছে।<br>
+        <span style="font-size:10px;">ডায়াগনস্টিক: আজকের রেকর্ড ${todayRecs.length}টি • মোট এন্ট্রি ${notdoneRawCount}টি • রোস্টারে মিলেছে ${matchedHostelCount}টি।</span>
       </div>`;
       return;
     }
 
     const rowsHtml = groups.map(([subjKey, items])=>{
       const itemsHtml = items.map(({name:nm, blk})=>{
-        const la = latestAction(nm);
-        const statusHtml = la
-          ? `<span style="font-size:10px;font-weight:700;color:${la.status==='resolved'?'#3b6d11':'#854f0b'}">${la.status==='resolved'?'✅ ব্যবস্থা নেওয়া হয়েছে':'🟡 ব্যবস্থা চলমান'}</span>`
-          : `<span style="font-size:10px;color:#a32d2d;font-weight:600">⏳ এখনো ব্যবস্থা নেওয়া হয়নি</span>`;
         const blockTag = myBlock ? '' : `<span style="font-size:9px;color:#6b6b8a;margin-right:6px;">ব্লক ${blk}</span>`;
+        const safeNm = nm.replace(/'/g,"\\'");
         return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(0,0,0,0.08);flex-wrap:wrap;gap:4px;">
-          <span style="font-size:12px;">${nm}</span><span>${blockTag}${statusHtml}</span>
+          <span style="font-size:12px;">${nm}</span>
+          <span style="display:flex;align-items:center;gap:6px;">
+            ${blockTag}
+            <button onclick="hwMarkResolved('${safeNm}', this)" style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px;border:1px solid #3b6d11;background:#eaf3de;color:#3b6d11;cursor:pointer;">✓ সম্পন্ন হয়েছে</button>
+          </span>
         </div>`;
       }).join('');
       return `<div style="margin-bottom:10px;">
@@ -4983,7 +5016,7 @@ function renderHaisHomeworkWidget(){
           </div>
         </div>
         ${rowsHtml}
-        <div style="font-size:10px;color:#999;margin-top:6px;">ℹ️ এটা শুধু তথ্যের জন্য — ব্যবস্থা নেওয়ার স্ট্যাটাস একাডেমিক শিক্ষকরাই HAIS অ্যাপ থেকে হালনাগাদ করেন।</div>
+        <div style="font-size:10px;color:#999;margin-top:6px;">ℹ️ "✓ সম্পন্ন হয়েছে" চাপলে এই ছাত্র এখান থেকে সরে যাবে এবং HAIS-এও "ব্যবস্থা নেওয়া হয়েছে" হিসেবে দেখাবে।</div>
       </div>`;
   }).catch(e=>{
     el.innerHTML = `<div style="margin:0 16px 14px;padding:10px 14px;background:#fcebeb;border:1px solid #a32d2d40;border-radius:12px;font-size:11.5px;color:#a32d2d;">⚠️ অপ্রত্যাশিত ত্রুটি: ${e.message||e}</div>`;
@@ -6070,6 +6103,8 @@ const RANK_CONFIG = {
     minCoverageDaysMonth: 10,  // মাসিক র‍্যাংকিংয়ে "অফিসিয়াল" গণ্য হতে ন্যূনতম ট্র্যাকড দিন, কম হলে "প্রভিশনাল"
     minCoverageDaysYear: 60,   // বাৎসরিক র‍্যাংকিংয়ে
     dayShrinkK: 8,             // কম ট্র্যাকড-দিনে প্রাতিষ্ঠানিক গড়ের দিকে শ্রিংকেজ শক্তি (নতুন ছাত্র/অল্প ডেটায় হুট করে ১০০ বা ০ না হয়ে যায়)
+    hwNotdonePenaltyPerIncident: 2,  // HAIS-এ প্রতিটি "পড়া করেনি" ঘটনার জন্য র‍্যাংকিং স্কোর থেকে যত পয়েন্ট কমবে
+    hwNotdonePenaltyCap: 20,         // সর্বোচ্চ কত পয়েন্ট পর্যন্ত এই খাতে কমতে পারে (একটানা রানওয়ে-নেগেটিভ এড়াতে)
   },
   staff: {
     manualDifficultyWeight: 0.25, // আগে ছিল ০.৫০ (৫০%) — সাবজেক্টিভ/পক্ষপাতের ঝুঁকি কমাতে ২৫%-এ নামানো হলো
@@ -7912,6 +7947,77 @@ function stupSetWindow(win){
   if(stupCurrentSerial!=null) showStudentProfile(stupCurrentSerial, stupFromPage);
 }
 
+// ── HAIS-এর "পড়া করেনি" ইতিহাস — ছাত্র প্রোফাইলে দেখানো (কবে, কোন বিষয়ে) ──
+function renderStudentHomeworkHistory(s, winB){
+  let container = document.getElementById('stup-hais-homework-history');
+  if(!container){
+    container = document.createElement('div');
+    container.id = 'stup-hais-homework-history';
+    container.style.margin = '14px 16px';
+    const pageEl = document.getElementById('page-student-profile');
+    if(pageEl) pageEl.appendChild(container);
+  }
+  if(!haisDb){ container.innerHTML=''; return; }
+
+  container.innerHTML = `<div style="padding:10px 14px;background:#fff;border:1px solid #ddd;border-radius:12px;font-size:12px;color:#6b6b8a;">⏳ HAIS থেকে হোমওয়ার্ক ইতিহাস লোড হচ্ছে...</div>`;
+
+  haisDb.ref('hais_data_v3/studentAttendance_v2').once('value').then(snap=>{
+    if(!container.isConnected) return; // ততক্ষণে অন্য প্রোফাইলে চলে গেলে পুরনো ফলাফল না বসানো
+    const attRaw = Object.values(snap.val()||{});
+    const targetName = String(s.name).trim().toUpperCase();
+
+    const history = [];
+    attRaw.forEach(rec=>{
+      if(!rec.isoDate) return;
+      if(rec.isoDate < winB.startISO || rec.isoDate > winB.endISO) return;
+      const hwRaw = rec.homework;
+      const hwPairs = Array.isArray(hwRaw)
+        ? hwRaw.filter(p=>p && p.name)
+        : Object.entries(hwRaw||{}).map(([name,status])=>({name,status}));
+      hwPairs.forEach(({name, status})=>{
+        if(status !== 'notdone') return;
+        if(String(name).trim().toUpperCase() !== targetName) return;
+        history.push({date: rec.dateLabel||rec.isoDate, isoDate: rec.isoDate, cls: rec.cls, subject: rec.subject});
+      });
+    });
+
+    history.sort((a,b)=> (b.isoDate||'').localeCompare(a.isoDate||''));
+
+    const count = history.length;
+    const penaltyPer = RANK_CONFIG.student.hwNotdonePenaltyPerIncident;
+    const penaltyCap = RANK_CONFIG.student.hwNotdonePenaltyCap;
+    const penaltyApplied = Math.min(count*penaltyPer, penaltyCap);
+
+    // বিষয়ভিত্তিক গণনা (কোন সাবজেক্টে কতবার)
+    const bySubj = {};
+    history.forEach(h=>{ bySubj[h.subject] = (bySubj[h.subject]||0)+1; });
+    const subjSummary = Object.entries(bySubj).sort((a,b)=>b[1]-a[1])
+      .map(([subj,n])=>`<span style="display:inline-block;padding:3px 9px;border-radius:12px;background:#fcebeb;color:#a32d2d;font-size:10.5px;font-weight:700;margin:2px 4px 2px 0;">${subj} (${n}বার)</span>`).join('');
+
+    const listHtml = history.slice(0,20).map(h=>
+      `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(0,0,0,0.07);font-size:11.5px;">
+        <span>${h.date}</span><span style="color:#6b6b8a;">${h.subject}</span>
+      </div>`).join('');
+
+    container.innerHTML = `
+      <div style="padding:14px;background:#fff;border:1px solid #a32d2d40;border-radius:12px;">
+        <div style="font-weight:700;color:#a32d2d;font-size:13px;margin-bottom:6px;">📕 একাডেমিক ক্লাসে "পড়া করেনি" — ইতিহাস (HAIS থেকে)</div>
+        ${count===0
+          ? `<div style="font-size:12px;color:#3b6d11;font-weight:600;">✅ এই সময়সীমায় কোনো "পড়া করেনি" রেকর্ড নেই</div>`
+          : `<div style="font-size:12px;color:#6b6b8a;margin-bottom:8px;">এই সময়সীমায় মোট <b style="color:#a32d2d;">${count}</b> বার — র‍্যাংকিং স্কোর থেকে <b style="color:#a32d2d;">${penaltyApplied}</b> পয়েন্ট কমানো হয়েছে ${count*penaltyPer>penaltyCap?'(সর্বোচ্চ সীমায় পৌঁছেছে)':''}</div>
+             <div style="margin-bottom:8px;">${subjSummary}</div>
+             <div style="max-height:220px;overflow-y:auto;">${listHtml}</div>
+             ${count>20?`<div style="font-size:10px;color:#999;margin-top:4px;">আরও ${count-20}টি রেকর্ড আছে</div>`:''}`
+        }
+        <div style="font-size:9.5px;color:#999;margin-top:8px;">ℹ️ এই তথ্য একাডেমিক ইন্টেলিজেন্স সিস্টেম (HAIS) থেকে লাইভ আসছে।</div>
+      </div>`;
+  }).catch(e=>{
+    if(container.isConnected){
+      container.innerHTML = `<div style="padding:10px 14px;background:#fcebeb;border:1px solid #a32d2d40;border-radius:12px;font-size:11.5px;color:#a32d2d;">⚠️ HAIS থেকে হোমওয়ার্ক ইতিহাস আনা যায়নি: ${e.code||e.message||e}</div>`;
+    }
+  });
+}
+
 function showStudentProfile(serial, fromPage){
   // allStudents তৈরি করি যদি খালি থাকে
   if(allStudents.length===0){ assignRooms(); }
@@ -8018,6 +8124,9 @@ function showStudentProfile(serial, fromPage){
       ptsNotice.style.display="none";
     }
   }
+
+  // 📕 HAIS-এর "পড়া করেনি" ইতিহাস (এই সময়-উইন্ডোর মধ্যে)
+  renderStudentHomeworkHistory(s, winB);
 
   // র‍্যাংক (মাসিক + বাৎসরিক, ব্লক + সামগ্রিক)
   const rankBnFn=(typeof bnRK==="function")?bnRK:bnST;
@@ -9564,6 +9673,27 @@ async function rkBuildScoresReal(period){
   const withData = Object.values(quality).filter(q=>q.trackedDays>0);
   const prior = withData.length ? withData.reduce((s,q)=>s+q.goodDays/q.trackedDays,0)/withData.length : 0.85;
 
+  // ── HAIS থেকে "পড়া করেনি" এর সংখ্যা (এই সময়সীমায়) — ছাত্র র‍্যাংকিংয়ে পেনাল্টি হিসেবে যোগ হবে ──
+  const hwNotdoneCounts = {};
+  if(haisDb){
+    try{
+      const attSnap = await haisDb.ref('hais_data_v3/studentAttendance_v2').once('value');
+      const attRaw = Object.values(attSnap.val()||{});
+      attRaw.forEach(rec=>{
+        if(!rec.isoDate || rec.isoDate < range.start || rec.isoDate > range.end) return;
+        const hwRaw = rec.homework;
+        const hwPairs = Array.isArray(hwRaw)
+          ? hwRaw.filter(p=>p && p.name)
+          : Object.entries(hwRaw||{}).map(([name,status])=>({name,status}));
+        hwPairs.forEach(({name, status})=>{
+          if(status !== 'notdone') return;
+          const key = String(name).trim().toUpperCase();
+          hwNotdoneCounts[key] = (hwNotdoneCounts[key]||0)+1;
+        });
+      });
+    }catch(e){ console.error('র‍্যাংকিং-এর জন্য HAIS হোমওয়ার্ক তথ্য আনা যায়নি:', e); }
+  }
+
   const rows = allStudents.map(s=>{
     const sid = s.serial;
     const q = quality[sid] || {trackedDays:0, goodDays:0, badDays:0};
@@ -9573,7 +9703,10 @@ async function rkBuildScoresReal(period){
     const bhInWindow = (typeof bhRecords!=='undefined'?bhRecords:[]).filter(r=>r.stuName===s.name && typeof r.ts==='number' && r.ts>=periodStart && r.ts<=periodEnd);
     const beh = (typeof stupComputeBehaviorScore==='function') ? stupComputeBehaviorScore(bhInWindow) : {ceiling:100, hasMajor:false, hasSevere:false, weightedMinus:0, weightedPlus:0};
 
-    const rawTotal = Math.round(shrunkRatio*100);
+    const hwCount = hwNotdoneCounts[String(s.name).trim().toUpperCase()] || 0;
+    const hwPenalty = Math.min(hwCount * RANK_CONFIG.student.hwNotdonePenaltyPerIncident, RANK_CONFIG.student.hwNotdonePenaltyCap);
+
+    const rawTotal = Math.round(shrunkRatio*100) - hwPenalty;
     const total = Math.max(0, Math.min(beh.ceiling, rawTotal));
 
     const provisional = q.trackedDays < minCov;
@@ -9586,6 +9719,7 @@ async function rkBuildScoresReal(period){
       hasMajor:beh.hasMajor, hasSevere:beh.hasSevere, ceiling:beh.ceiling,
       penalty: beh.weightedMinus||0, bonus: beh.weightedPlus||0,
       discNet: (beh.weightedPlus||0)-(beh.weightedMinus||0),
+      hwNotdoneCount: hwCount, hwNotdonePenalty: hwPenalty,
       coverageDays:q.trackedDays, periodDays, provisional, confidence,
     };
   });
