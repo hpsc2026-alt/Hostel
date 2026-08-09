@@ -11861,6 +11861,7 @@ if('serviceWorker' in navigator){
       <div style="font-size:11.5px;color:#6b6455;margin-bottom:10px;line-height:1.5;">
         ছুটির দিনে (যেমন ঈদ, বার্ষিক ছুটি) প্রতিটি ছাত্রকে আলাদা আলাদা করে ছুটি না দিয়ে, একটি তারিখ পরিসীমা দিলে
         <b>সব ছাত্রই</b> স্বয়ংক্রিয়ভাবে সেই সময়ের জন্য "ছুটিতে/বাড়িতে" হিসেবে চিহ্নিত হয়ে যাবে।
+        <br><br>⚠️ প্রত্যেক ছাত্র হোস্টেলে ফিরে আসার পর তাকে <b>আলাদাভাবে</b> "ফিরে এসেছে" নিশ্চিত করতে হবে (যেহেতু সবাই একই দিনে ফেরে না)।
       </div>
       <div class="lv-date-row">
         <div class="lv-field">
@@ -11997,6 +11998,19 @@ function lvBuildDateOptions(){
   return opts.join("");
 }
 
+// হোস্টেল-বন্ধ (বাল্ক) ফর্মের জন্য — অতীতের তারিখও দেখাতে হয়, কারণ
+// হোস্টেল বন্ধ হয়ে যাওয়ার পরও (দেরিতে হলেও) ঘোষণা দেওয়ার দরকার হতে পারে
+function lvBuildBulkDateOptions(){
+  const opts=[];
+  const today=new Date(); today.setHours(0,0,0,0);
+  for(let i=-60;i<=90;i++){
+    const d=new Date(today); d.setDate(d.getDate()+i);
+    const label = lvFmtDate(d) + (i===0?' (আজ)':'');
+    opts.push(`<option value="${lvISO(d)}"${i===0?' selected':''}>${label}</option>`);
+  }
+  return opts.join("");
+}
+
 // ── ফর্ম চালু করা ──
 function lvPopulateForm(){
   if(allStudents.length===0) assignRooms();
@@ -12035,8 +12049,9 @@ function lvPopulateForm(){
   // হোস্টেল-বন্ধ (বাল্ক) ফর্মের তারিখ ও কারণ অপশন
   const bulkFromSel = document.getElementById('lv-bulk-from-select');
   const bulkToSel = document.getElementById('lv-bulk-to-select');
-  if(bulkFromSel) bulkFromSel.innerHTML = dateOpts;
-  if(bulkToSel) bulkToSel.innerHTML = dateOpts;
+  const bulkDateOpts = lvBuildBulkDateOptions();
+  if(bulkFromSel) bulkFromSel.innerHTML = bulkDateOpts;
+  if(bulkToSel) bulkToSel.innerHTML = bulkDateOpts;
   const bulkReasonSel = document.getElementById('lv-bulk-reason-select');
   if(bulkReasonSel) bulkReasonSel.innerHTML = LV_BULK_REASONS.map(r=>`<option value="${r}">${r}</option>`).join("");
 
@@ -12320,7 +12335,7 @@ function lvBulkCloseHostel(){
 
   const fromFmt = lvFmtDate(new Date(fromISO+'T00:00:00'));
   const toFmt = lvFmtDate(new Date(toISO+'T00:00:00'));
-  if(!confirm('⚠️ এতে '+lvBn(allStudents.length)+' জন ছাত্রকেই '+fromFmt+' থেকে '+toFmt+' পর্যন্ত "ছুটিতে/বাড়িতে" হিসেবে চিহ্নিত করা হবে।\n\nআগে থেকে কারো জন্য আলাদা ছুটি দেওয়া থাকলে তার সাথে এটি পাশাপাশি যোগ হবে (দুইবার গণনা হবে না)।\n\nনিশ্চিত?')) return;
+  if(!confirm('⚠️ এতে '+lvBn(allStudents.length)+' জন ছাত্রকেই '+fromFmt+' থেকে '+toFmt+' পর্যন্ত "ছুটিতে/বাড়িতে" হিসেবে চিহ্নিত করা হবে।\n\nআগে থেকে কারো জন্য আলাদা ছুটি দেওয়া থাকলে তার সাথে এটি পাশাপাশি যোগ হবে (দুইবার গণনা হবে না)।\n\nℹ️ প্রত্যেক ছাত্র যেদিন হোস্টেলে সত্যিই ফিরে আসবে, সেদিন তাকে আলাদাভাবে "ফিরে এসেছে" বলে নিশ্চিত করতে হবে — সবাই একসাথে "ফিরে আসছে" বলে ধরে নেওয়া হবে না, কারণ সবাই একই দিনে ফেরে না।\n\nনিশ্চিত?')) return;
 
   const closureId = 'closure_'+Date.now();
   const ts = Date.now();
@@ -12338,6 +12353,9 @@ function lvBulkCloseHostel(){
       time:'এইমাত্র',
       by: user.name,
       closureId, bulk:true
+      // returnedEarly ইচ্ছাকৃতভাবে false/অনুপস্থিত রাখা হলো — যদিও toISO অতীতের তারিখ
+      // হতে পারে, প্রতিটি ছাত্র আলাদা আলাদা দিনে হোস্টেলে ফিরবে, তাই "ফিরে এসেছে" নিশ্চিতকরণ
+      // হোস্টেল সুপার/অ্যাডমিন প্রতিটি ছাত্রের জন্য আলাদাভাবেই করবেন (erMarkReturned দিয়ে)
     };
     lvRecords.unshift(rec);
     if(typeof fbSet==='function') fbSet('leaveRecords/'+newId, rec);
