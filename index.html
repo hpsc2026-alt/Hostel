@@ -11856,6 +11856,30 @@ if('serviceWorker' in navigator){
       <div class="lv-sum-card"><div class="lv-sum-num" id="lv-total-count">০</div><div class="lv-sum-lbl">মোট রেকর্ড</div></div>
     </div>
 
+    <div class="lv-form-card" style="border:1.5px solid #c9a84c66;background:#fbf6e8;">
+      <div class="lv-form-title">🏫 হোস্টেল বন্ধ ঘোষণা করুন (সব ছাত্র একসাথে)</div>
+      <div style="font-size:11.5px;color:#6b6455;margin-bottom:10px;line-height:1.5;">
+        ছুটির দিনে (যেমন ঈদ, বার্ষিক ছুটি) প্রতিটি ছাত্রকে আলাদা আলাদা করে ছুটি না দিয়ে, একটি তারিখ পরিসীমা দিলে
+        <b>সব ছাত্রই</b> স্বয়ংক্রিয়ভাবে সেই সময়ের জন্য "ছুটিতে/বাড়িতে" হিসেবে চিহ্নিত হয়ে যাবে।
+      </div>
+      <div class="lv-date-row">
+        <div class="lv-field">
+          <label class="lv-field-lbl">📅 কোন তারিখ থেকে হোস্টেল বন্ধ</label>
+          <select class="lv-select" id="lv-bulk-from-select"></select>
+        </div>
+        <div class="lv-field">
+          <label class="lv-field-lbl">📅 কোন তারিখ পর্যন্ত (এই দিন পর্যন্ত বন্ধ)</label>
+          <select class="lv-select" id="lv-bulk-to-select"></select>
+        </div>
+      </div>
+      <div class="lv-field">
+        <label class="lv-field-lbl">📋 বন্ধের কারণ</label>
+        <select class="lv-select" id="lv-bulk-reason-select"></select>
+      </div>
+      <button class="lv-submit-btn" style="background:linear-gradient(135deg,#8a6d1f,#c9a84c);" onclick="lvBulkCloseHostel()">🏫 সব ছাত্রকে ছুটিতে দেখান</button>
+      <div id="lv-closure-list"></div>
+    </div>
+
     <div class="lv-form-card">
       <div class="lv-form-title">🚪 নতুন ছুটি নথিভুক্ত করুন</div>
 
@@ -11937,6 +11961,7 @@ if('serviceWorker' in navigator){
 let lvRecords = [];
 let lvNextId = 1;
 const LV_REASONS = ['অসুস্থতা','পারিবারিক প্রয়োজন','সাপ্তাহিক ছুটি','উৎসব/অনুষ্ঠান','জরুরি প্রয়োজন','চিকিৎসা','অন্যান্য'];
+const LV_BULK_REASONS = ['ঈদের ছুটি','বার্ষিক পরীক্ষার পরের ছুটি','সরকারি ছুটি','প্রাতিষ্ঠানিক বন্ধ','অন্যান্য (হোস্টেল বন্ধ)'];
 const LV_BN_MONTHS = ['জানুয়ারি','ফেব্রুয়ারি','মার্চ','এপ্রিল','মে','জুন','জুলাই','আগস্ট','সেপ্টেম্বর','অক্টোবর','নভেম্বর','ডিসেম্বর'];
 const LV_BN_WEEKDAYS = ['রবি','সোম','মঙ্গল','বুধ','বৃহস্পতি','শুক্র','শনি'];
 
@@ -12006,6 +12031,14 @@ function lvPopulateForm(){
   const reasonSel = document.getElementById('lv-reason-select');
   if(reasonSel) reasonSel.innerHTML = '<option value="">— কারণ নির্বাচন করুন —</option>' +
     LV_REASONS.map(r=>`<option value="${r}">${r}</option>`).join("");
+
+  // হোস্টেল-বন্ধ (বাল্ক) ফর্মের তারিখ ও কারণ অপশন
+  const bulkFromSel = document.getElementById('lv-bulk-from-select');
+  const bulkToSel = document.getElementById('lv-bulk-to-select');
+  if(bulkFromSel) bulkFromSel.innerHTML = dateOpts;
+  if(bulkToSel) bulkToSel.innerHTML = dateOpts;
+  const bulkReasonSel = document.getElementById('lv-bulk-reason-select');
+  if(bulkReasonSel) bulkReasonSel.innerHTML = LV_BULK_REASONS.map(r=>`<option value="${r}">${r}</option>`).join("");
 
   lvSetLeaveType('full'); // প্রতিবার ফর্ম রিসেট হলে ডিফল্ট পূর্ণ-দিনের ছুটি
   const shortHours = document.getElementById('lv-short-hours');
@@ -12196,7 +12229,7 @@ function lvRender(){
     el.innerHTML = '<div style="text-align:center;padding:40px 16px;color:#8b98a3"><div style="font-size:36px;margin-bottom:10px">🚪</div><div>এখনো কোনো ছুটি নথিভুক্ত করা হয়নি</div></div>';
     return;
   }
-  el.innerHTML = lvRecords.map((r,i)=>{
+  el.innerHTML = lvRecords.filter(r=>!r.closureId).map((r,i)=>{
     const active = lvIsActiveToday(r);
     return `<div class="lv-card" style="animation-delay:${i*.03}s">
       <div class="lv-top">
@@ -12226,6 +12259,8 @@ function lvRender(){
       </div>
     </div>`;
   }).join("");
+
+  if(typeof lvRenderClosures==='function') lvRenderClosures();
 }
 
 function lvShowToast(msg,type){ typedToast('lv-toast','lv-toast',msg,type); } // কেন্দ্রীয় typedToast-এ একীভূত
@@ -12260,6 +12295,110 @@ function lvExtend(id){
 
   lvRender();
   lvShowToast('✅ ছুটি '+lvBn(days)+' দিন বাড়ানো হয়েছে — নতুন ফেরার তারিখ: '+newToFmt, 'ok');
+  if(typeof renderDashBlockCards==='function') renderDashBlockCards();
+}
+
+// ══════════════════════════════════════════════════════════
+// হোস্টেল বন্ধ (বাল্ক ছুটি) — একবারে সব ছাত্রের জন্য ছুটি রেকর্ড তৈরি
+// প্রতিটি ছাত্রের জন্য আলাদা leaveRecords এন্ট্রি তৈরি হয় (একই closureId
+// দিয়ে চিহ্নিত), তাই বিদ্যমান lvIsActiveToday-ভিত্তিক সব লজিক (ড্যাশবোর্ড,
+// রিপোর্ট, ব্লক কার্ড ইত্যাদি) কোনো পরিবর্তন ছাড়াই স্বয়ংক্রিয়ভাবে কাজ করবে।
+// ══════════════════════════════════════════════════════════
+function lvBulkCloseHostel(){
+  const user = (typeof getSessionUser==='function') ? getSessionUser() : null;
+  if(!user || (user.role!=='super' && user.role!=='admin')){
+    lvShowToast('শুধুমাত্র হোস্টেল সুপার বা অ্যাডমিন হোস্টেল বন্ধ ঘোষণা করতে পারবেন।','err');
+    return;
+  }
+  if(allStudents.length===0) assignRooms();
+  const fromISO = (document.getElementById('lv-bulk-from-select')||{}).value;
+  const toISO = (document.getElementById('lv-bulk-to-select')||{}).value;
+  if(!fromISO || !toISO){ lvShowToast('তারিখ নির্বাচন করুন','err'); return; }
+  if(toISO < fromISO){ lvShowToast('ফেরার তারিখ যাওয়ার তারিখের আগে হতে পারে না','err'); return; }
+  const reasonSel = document.getElementById('lv-bulk-reason-select');
+  const reason = (reasonSel && reasonSel.value) ? reasonSel.value : 'হোস্টেল বন্ধ (ছুটি)';
+
+  const fromFmt = lvFmtDate(new Date(fromISO+'T00:00:00'));
+  const toFmt = lvFmtDate(new Date(toISO+'T00:00:00'));
+  if(!confirm('⚠️ এতে '+lvBn(allStudents.length)+' জন ছাত্রকেই '+fromFmt+' থেকে '+toFmt+' পর্যন্ত "ছুটিতে/বাড়িতে" হিসেবে চিহ্নিত করা হবে।\n\nআগে থেকে কারো জন্য আলাদা ছুটি দেওয়া থাকলে তার সাথে এটি পাশাপাশি যোগ হবে (দুইবার গণনা হবে না)।\n\nনিশ্চিত?')) return;
+
+  const closureId = 'closure_'+Date.now();
+  const ts = Date.now();
+  let count = 0;
+  allStudents.forEach((s,idx)=>{
+    const newId = ts+'_'+idx+'_'+Math.floor(Math.random()*10000);
+    const rec = {
+      id:newId, stuSerial:s.serial, stuName:s.name, cls:s.cls, blk:s.blk||s.block,
+      fromISO, toISO,
+      from: fromFmt, to: toFmt,
+      reason, reasonNote:'',
+      isShortLeave:false, hours:0,
+      classesMissed:0,
+      status:'approved',
+      time:'এইমাত্র',
+      by: user.name,
+      closureId, bulk:true
+    };
+    lvRecords.unshift(rec);
+    if(typeof fbSet==='function') fbSet('leaveRecords/'+newId, rec);
+    count++;
+  });
+
+  lvRender();
+  lvShowToast('✅ '+lvBn(count)+' জন ছাত্রের জন্য হোস্টেল বন্ধের ছুটি নথিভুক্ত হয়েছে!','ok');
+  if(typeof renderDashBlockCards==='function') renderDashBlockCards();
+}
+
+// বাল্ক-তৈরি ছুটিগুলোকে closureId অনুযায়ী গ্রুপ করে দেখানো
+function lvClosureGroups(){
+  const groups={};
+  lvRecords.forEach(r=>{
+    if(!r.closureId) return;
+    if(!groups[r.closureId]) groups[r.closureId]={from:r.from,to:r.to,fromISO:r.fromISO,toISO:r.toISO,reason:r.reason,count:0,by:r.by,ts:0};
+    groups[r.closureId].count++;
+    const idNum = parseInt(String(r.id).split('_')[0])||0;
+    if(idNum>groups[r.closureId].ts) groups[r.closureId].ts=idNum;
+  });
+  return Object.keys(groups).map(cid=>Object.assign({closureId:cid}, groups[cid])).sort((a,b)=>b.ts-a.ts);
+}
+
+function lvRenderClosures(){
+  const el = document.getElementById('lv-closure-list');
+  if(!el) return;
+  const groups = lvClosureGroups();
+  if(groups.length===0){ el.innerHTML=''; return; }
+  const today = lvTodayISO();
+  el.innerHTML = '<div style="font-size:11.5px;font-weight:700;color:#6b6455;margin:14px 0 6px;">🏫 সাম্প্রতিক ঘোষিত হোস্টেল-বন্ধ</div>' + groups.map(g=>`
+    <div class="lv-card">
+      <div class="lv-top">
+        <div class="lv-avatar">🏫</div>
+        <div class="lv-info">
+          <div class="lv-name">${escHtml(g.reason)}</div>
+          <div class="lv-meta">${g.from} — ${g.to} • ${lvBn(g.count)} জন ছাত্র</div>
+        </div>
+        <div class="lv-badge ${g.toISO>=today?'lv-badge-active':'lv-badge-done'}">${g.toISO>=today?'🟢 চলমান':'⚪ সমাপ্ত'}</div>
+      </div>
+      <div class="lv-foot">
+        <span>👤 ${escHtml(g.by||'')}</span>
+        <button class="lv-del" onclick="lvBulkDeleteClosure('${g.closureId}')">🗑️ সব বাতিল করুন</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function lvBulkDeleteClosure(closureId){
+  const user = (typeof getSessionUser==='function') ? getSessionUser() : null;
+  if(!user || (user.role!=='super' && user.role!=='admin')){
+    lvShowToast('শুধুমাত্র হোস্টেল সুপার বা অ্যাডমিন এটি বাতিল করতে পারবেন।','err');
+    return;
+  }
+  const affected = lvRecords.filter(r=>r.closureId===closureId);
+  if(affected.length===0) return;
+  if(!confirm('এই হোস্টেল-বন্ধ ঘোষণার '+lvBn(affected.length)+'টি ছুটির রেকর্ডই একসাথে মুছে ফেলতে চান? এটি ফিরিয়ে আনা যাবে না।')) return;
+  affected.forEach(r=>{ if(typeof fbSet==='function') fbSet('leaveRecords/'+r.id, null); });
+  lvRecords = lvRecords.filter(r=>r.closureId!==closureId);
+  lvRender();
+  lvShowToast('রেকর্ডগুলো মুছে ফেলা হয়েছে','ok');
   if(typeof renderDashBlockCards==='function') renderDashBlockCards();
 }
 
