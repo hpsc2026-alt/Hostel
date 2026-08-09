@@ -12407,11 +12407,11 @@ function goLeave(){
   const user = (typeof getSessionUser==='function') ? getSessionUser() : null;
   const guardEl = document.getElementById('lv-guard-area');
   const contentEl = document.getElementById('lv-content-area');
-  if(!user || user.role!=='super'){
+  if(!user || (user.role!=='super' && user.role!=='admin')){
     if(guardEl) guardEl.innerHTML = `<div class="lv-guard">
       <div style="font-size:44px;margin-bottom:12px;">🔒</div>
-      <div style="font-size:14px;font-weight:700;color:#24313b;margin-bottom:6px;">এই অংশটি শুধুমাত্র হোস্টেল সুপারের জন্য</div>
-      <div style="font-size:12px;">ছুটির অনুমোদন শুধুমাত্র হোস্টেল সুপার দিতে পারবেন।</div>
+      <div style="font-size:14px;font-weight:700;color:#24313b;margin-bottom:6px;">এই অংশটি শুধুমাত্র হোস্টেল সুপার ও অ্যাডমিনের জন্য</div>
+      <div style="font-size:12px;">ছুটির অনুমোদন শুধুমাত্র হোস্টেল সুপার বা অ্যাডমিন দিতে পারবেন।</div>
     </div>`;
     if(contentEl) contentEl.style.display='none';
     showPage("leave");
