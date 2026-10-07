@@ -1280,6 +1280,10 @@ function effectiveUsers(role){
         সুপার অ্যাডমিন
       </div>
       <div class="role-btn" onclick="selectRole('super')" id="role-super">
+        <span class="role-icon">🎖️</span>
+        অ্যাডমিন অফিসার
+      </div>
+      <div class="role-btn" onclick="selectRole('hsuper')" id="role-hsuper">
         <span class="role-icon">🏆</span>
         হোস্টেল সুপার
       </div>
@@ -1287,7 +1291,7 @@ function effectiveUsers(role){
         <span class="role-icon">🏠</span>
         হাউজ টিউটর
       </div>
-      <div class="role-btn" onclick="selectRole('arabic')" id="role-arabic">
+      <div class="role-btn" onclick="selectRole('arabic')" id="role-arabic" style="grid-column:1 / -1;">
         <span class="role-icon">📖</span>
         আরবি শিক্ষক
       </div>
@@ -2600,7 +2604,7 @@ let obData = {}; // { A: {onDuty, present:[..], crossCheck, spotAnswers:[..], ra
 function obRenderReminder(user){
   const sec = document.getElementById('obReminderSection');
   if(!sec) return;
-  if(user.role!=='super' && user.role!=='admin'){ sec.innerHTML=''; return; }
+  if(user.role!=='super' && user.role!=='hsuper' && user.role!=='admin'){ sec.innerHTML=''; return; }
   if(!fbReady){ sec.innerHTML=''; return; }
   fbDb.ref('observationMeta/lastSubmitted').once('value').then(snap=>{
     const last = snap.val();
@@ -2825,7 +2829,7 @@ function ogLoadFromFirebase(){
 function ogRenderReminder(user){
   const sec = document.getElementById('ogReminderSection');
   if(!sec) return;
-  if(user.role!=='super' && user.role!=='admin'){ sec.innerHTML=''; return; }
+  if(user.role!=='super' && user.role!=='hsuper' && user.role!=='admin'){ sec.innerHTML=''; return; }
   const items = ogGetComplaints();
   const pending = items.filter(i=>!i.a.actionTaken && !i.a.resolved).length;
   if(pending>0){
@@ -4364,13 +4368,17 @@ const USERS = {
     {id:'admin03', pass:INITIAL_PASSWORD, name:'আবু সাঈদ', title:'একাডেমিক ইনচার্জ / সিস্টেম অ্যাডমিন'},
   ],
   super: [
-    {id:'super01', pass:INITIAL_PASSWORD, name:'আবু জাহিদ', title:'হোস্টেল সুপার'},
+    {id:'super01', pass:INITIAL_PASSWORD, name:'আবু জাহিদ', title:'অ্যাডমিন অফিসার'}, // ⚠️ অভ্যন্তরীণ role-key 'super' এখন "অ্যাডমিন অফিসার" বোঝায় (পুরনো ডেটা/পাসওয়ার্ড অক্ষুণ্ণ রাখতে key বদলানো হয়নি)
+  ],
+  // নতুন হোস্টেল সুপার — ছুটি সংক্রান্ত কোনো ক্ষমতা নেই; নাম রাখা হয়নি, যাতে ব্যক্তি বদলালে কোড বদলাতে না হয়
+  hsuper: [
+    {id:'hsuper01', pass:INITIAL_PASSWORD, name:'হোস্টেল সুপার', title:'হোস্টেল সুপার'},
   ],
   asst: [
-    {id:'asst01', pass:INITIAL_PASSWORD, name:'শাহাদাত স্যার', title:'হাউজ টিউটর — ব্লক A'},
-    {id:'asst02', pass:INITIAL_PASSWORD, name:'আবুল হাসান স্যার', title:'হাউজ টিউটর — ব্লক B'},
-    {id:'asst03', pass:INITIAL_PASSWORD, name:'শরিফুল ইসলাম স্যার', title:'হাউজ টিউটর — ব্লক C'},
-    {id:'asst04', pass:INITIAL_PASSWORD, name:'নিজাম উদ্দিন স্যার', title:'হাউজ টিউটর — ব্লক D'},
+    {id:'asst01', pass:INITIAL_PASSWORD, name:'ব্লক A শিক্ষক', title:'হাউজ টিউটর — ব্লক A'},
+    {id:'asst02', pass:INITIAL_PASSWORD, name:'ব্লক B শিক্ষক', title:'হাউজ টিউটর — ব্লক B'},
+    {id:'asst03', pass:INITIAL_PASSWORD, name:'ব্লক C শিক্ষক', title:'হাউজ টিউটর — ব্লক C'},
+    {id:'asst04', pass:INITIAL_PASSWORD, name:'ব্লক D শিক্ষক', title:'হাউজ টিউটর — ব্লক D'},
   ],
   arabic: [
     {id:'arabic01', pass:INITIAL_PASSWORD, name:'রফিকুল ইসলাম স্যার'},
@@ -4382,14 +4390,18 @@ const USERS = {
 
 const ROLE_LABELS = {
   admin: 'সুপার অ্যাডমিন',
-  super: 'হোস্টেল সুপার',
+  super: 'অ্যাডমিন অফিসার',
+  hsuper: 'হোস্টেল সুপার',
   asst:  'হাউজ টিউটর',
   arabic: 'আরবি শিক্ষক',
 };
 
 const ROLE_ICONS = {
-  admin:'👑', super:'🏆', asst:'🏠', arabic:'📖',
+  admin:'👑', super:'🎖️', hsuper:'🏆', asst:'🏠', arabic:'📖',
 };
+
+// পুরনো সেশনে সংরক্ষিত নাম/রোল-লেবেল নতুন নিয়মে হালনাগাদ (নাম এখন USERS থেকেই আসে)
+(function(){ try{ const raw=localStorage.getItem('hms_user'); if(!raw) return; const ss=JSON.parse(raw); const rec=(USERS[ss.role]||[]).find(x=>x.id===ss.id); if(rec && (ss.name!==rec.name || ss.roleLabel!==ROLE_LABELS[ss.role])){ ss.name=rec.name; ss.roleLabel=ROLE_LABELS[ss.role]; localStorage.setItem('hms_user',JSON.stringify(ss)); } }catch(e){} })();
 
 let currentRole = 'admin';
 
@@ -4445,7 +4457,7 @@ async function doLogin(){
       const si = document.getElementById('successInline');
       si.classList.add('show');
 
-      const icons = {admin:'👑',super:'🏆',asst:'🌙',arabic:'📖'};
+      const icons = {admin:'👑',super:'🎖️',hsuper:'🏆',asst:'🌙',arabic:'📖'};
       document.getElementById('successIcon').textContent = icons[currentRole];
       document.getElementById('successTitle').textContent = 'আস-সালামু আলাইকুম, '+found.name+'!';
       document.getElementById('successSub').textContent =
@@ -4681,6 +4693,7 @@ const ROLE_CONFIG = {
       {icon:'🏠', label:'বাড়িতে আছে', val:'০', badge:'আগে ফিরলে ট্যাপ করুন', cls:'sc-amber', nav:'goEarlyReturn', id:'stat-home-count'},
     ],
     quickActions: [
+      {icon:'📆', label:'হোস্টেল অবস্থান রিপোর্ট', onclick:'goStayReport()'},
       {icon:'📊', label:'সম্পূর্ণ রিপোর্ট', onclick:'goReport()'},
       {icon:'🕐', label:'আজকের রুটিন প্রতিবেদন', onclick:'goRoutineFullReport()'},
       {icon:'👨‍💼', label:'স্টাফ ব্যবস্থাপনা', onclick:'goStaffKpi()'},
@@ -4695,7 +4708,7 @@ const ROLE_CONFIG = {
     showStaff: true,
   },
   super: {
-    banner: {cls:'rb-super', icon:'🏆', label:'হোস্টেল সুপার', title:'হোস্টেল সুপার ড্যাশবোর্ড', desc:'সামগ্রিক হোস্টেল পরিচালনা ও পর্যবেক্ষণ।'},
+    banner: {cls:'rb-super', icon:'🎖️', label:'অ্যাডমিন অফিসার', title:'অ্যাডমিন অফিসার ড্যাশবোর্ড', desc:'সামগ্রিক হোস্টেল পরিচালনা ও পর্যবেক্ষণ।'},
     stats: [
       {icon:'👨‍🎓', label:'মোট ছাত্র', val:'—', badge:'সক্রিয়', cls:'sc-blue', nav:'goStudents', id:'stat-total-students'},
       {icon:'✅', label:'আজ উপস্থিত', val:'—', badge:'হোস্টেলে আছে', cls:'sc-green', nav:'goAttendance', id:'stat-present-today'},
@@ -4706,6 +4719,7 @@ const ROLE_CONFIG = {
       {icon:'🏠', label:'বাড়িতে আছে', val:'০', badge:'আগে ফিরলে ট্যাপ করুন', cls:'sc-amber', nav:'goEarlyReturn', id:'stat-home-count'},
     ],
     quickActions: [
+      {icon:'📆', label:'হোস্টেল অবস্থান রিপোর্ট', onclick:'goStayReport()'},
       {icon:'🏆', label:'আমার সারসংক্ষেপ', onclick:'goSuperSummary()'},
       {icon:'🕐', label:'আজকের রুটিন প্রতিবেদন', onclick:'goRoutineFullReport()'},
       {icon:'🗒️', label:'রিপোর্ট দেওয়া বাকি আছে', onclick:'goReportPending()'},
@@ -4715,6 +4729,28 @@ const ROLE_CONFIG = {
       {icon:'🏆', label:'সহকারী র‍্যাংকিং', onclick:'goStaffRanking()'},
       {icon:'📖', label:'আরবি শিক্ষক র‍্যাংকিং', onclick:'goArabicRanking()'},
       {icon:'🚪', label:'ছুটি অনুমোদন', onclick:'goLeave()'},
+      {icon:'⚖️', label:'আচরণ রেকর্ড', onclick:'goBehaviour()'},
+    ],
+    showStaff: true,
+  },
+  hsuper: {
+    banner: {cls:'rb-super', icon:'🏆', label:'হোস্টেল সুপার', title:'হোস্টেল সুপার ড্যাশবোর্ড', desc:'সামগ্রিক হোস্টেল পরিচালনা ও পর্যবেক্ষণ।'},
+    stats: [
+      {icon:'👨‍🎓', label:'মোট ছাত্র', val:'—', badge:'সক্রিয়', cls:'sc-blue', nav:'goStudents', id:'stat-total-students'},
+      {icon:'✅', label:'আজ উপস্থিত', val:'—', badge:'হোস্টেলে আছে', cls:'sc-green', nav:'goAttendance', id:'stat-present-today'},
+      {icon:'⚠️', label:'অ্যালার্ট', val:'—', badge:'জরুরি', cls:'sc-red', nav:'goComplaintCenter', id:'stat-alert-count'},
+      {icon:'🏥', label:'অসুস্থ', val:'—', badge:'চিকিৎসাধীন', cls:'sc-amber', nav:'goHealth', id:'stat-sick-count'},
+      {icon:'✅', label:'আজকের রুটিন', val:'—', badge:'চলমান', cls:'sc-teal', nav:'goRoutineFullReport', id:'stat-checklist'},
+    ],
+    quickActions: [
+      {icon:'🏆', label:'আমার সারসংক্ষেপ', onclick:'goSuperSummary()'},
+      {icon:'🕐', label:'আজকের রুটিন প্রতিবেদন', onclick:'goRoutineFullReport()'},
+      {icon:'🗒️', label:'রিপোর্ট দেওয়া বাকি আছে', onclick:'goReportPending()'},
+      {icon:'📋', label:'দৈনন্দিন পূর্ণাঙ্গ প্রতিবেদন (প্রিন্ট)', onclick:'goStaffDailyReport()'},
+      {icon:'🚨', label:'অভিযোগ কেন্দ্র', onclick:'goComplaintCenter()'},
+      {icon:'🔍', label:'পরিদর্শন প্রতিবেদন', onclick:'obOpen()'},
+      {icon:'🏆', label:'সহকারী র‍্যাংকিং', onclick:'goStaffRanking()'},
+      {icon:'📖', label:'আরবি শিক্ষক র‍্যাংকিং', onclick:'goArabicRanking()'},
       {icon:'⚖️', label:'আচরণ রেকর্ড', onclick:'goBehaviour()'},
     ],
     showStaff: true,
@@ -4791,7 +4827,7 @@ function sportsDateKey(){ return fbDateKey(new Date()); } // আগে toDateStr
 function sportsLegacyDateKey(){ return new Date().toDateString(); } // পুরনো ডেটার fallback পড়ার জন্য
 function sportsGetBlock(){
   const user = getSessionUser();
-  if(user.role==='admin' || user.role==='super') return null; // অ্যাডমিন/সুপার নিজে টিক দিতে পারবেন না, নির্দিষ্ট ব্লক না থাকায়
+  if(user.role==='admin' || user.role==='super' || user.role==='hsuper') return null; // অ্যাডমিন/সুপার নিজে টিক দিতে পারবেন না, নির্দিষ্ট ব্লক না থাকায়
   return ASST_BLOCK_MAP[user.id] || null;
 }
 function sportsIsChecked(){
@@ -5597,7 +5633,7 @@ const BLOCKS = {
   A: {
     label: 'ব্লক A — দোতলা',
     classes: ['IV','V','VI','VII'],
-    supervisor: 'শাহাদাত স্যার',
+    supervisor: 'ব্লক A শিক্ষক',
     floor: 'দোতলা',
     color: '#2f9e5c',
     bgCls: 'bh-a',
@@ -5606,7 +5642,7 @@ const BLOCKS = {
   B: {
     label: 'ব্লক B — দোতলা',
     classes: ['VIII'],
-    supervisor: 'আবুল হাসান স্যার',
+    supervisor: 'ব্লক B শিক্ষক',
     floor: 'দোতলা',
     color: '#8258c9',
     bgCls: 'bh-b',
@@ -5615,7 +5651,7 @@ const BLOCKS = {
   C: {
     label: 'ব্লক C — তিনতলা',
     classes: ['IX'],
-    supervisor: 'শরিফুল ইসলাম স্যার',
+    supervisor: 'ব্লক C শিক্ষক',
     floor: 'তিনতলা',
     color: '#1f9797',
     bgCls: 'bh-c',
@@ -5624,7 +5660,7 @@ const BLOCKS = {
   D: {
     label: 'ব্লক D — তিনতলা',
     classes: ['X'],
-    supervisor: 'নিজাম উদ্দিন স্যার',
+    supervisor: 'ব্লক D শিক্ষক',
     floor: 'তিনতলা',
     color: '#a9822f',
     bgCls: 'bh-d',
@@ -5891,7 +5927,7 @@ function stuAddSubmit(){
 // ছাত্র ডিলিট (চলে যাওয়া ছাত্র) — শুধু অ্যাডমিন/সুপার
 function stuDeleteStudent(serial){
   const user = (typeof getSessionUser==='function') ? getSessionUser() : null;
-  if(!user || (user.role!=='admin' && user.role!=='super')){
+  if(!user || (user.role!=='admin' && user.role!=='super' && user.role!=='hsuper')){
     alert('ছাত্র ডিলিট করার অনুমতি শুধু অ্যাডমিন ও হোস্টেল সুপারের আছে।');
     return;
   }
@@ -7546,7 +7582,7 @@ const STAFF_DATA = {
   super: {
     id:"super",
     name:"আবু জাহিদ",
-    role:"হোস্টেল সুপার",
+    role:"অ্যাডমিন অফিসার",
     icon:"🏆",
     iconColor:"#2f9e5c",
     block:"সমস্ত হোস্টেল",
@@ -7575,7 +7611,7 @@ const STAFF_DATA = {
   },
   asst01: {
     id:"asst01",
-    name:"শাহাদাত",
+    name:"ব্লক A শিক্ষক",
     role:"হাউজ টিউটর",
     icon:"🏠",
     iconColor:"#2f9e5c",
@@ -7607,7 +7643,7 @@ const STAFF_DATA = {
   },
   asst02: {
     id:"asst02",
-    name:"আবুল হাসান",
+    name:"ব্লক B শিক্ষক",
     role:"হাউজ টিউটর",
     icon:"🏠",
     iconColor:"#8258c9",
@@ -7638,7 +7674,7 @@ const STAFF_DATA = {
   },
   asst03: {
     id:"asst03",
-    name:"শরিফুল ইসলাম",
+    name:"ব্লক C শিক্ষক",
     role:"হাউজ টিউটর",
     icon:"🏠",
     iconColor:"#1f9797",
@@ -7667,7 +7703,7 @@ const STAFF_DATA = {
   },
   asst04: {
     id:"asst04",
-    name:"নিজাম উদ্দিন",
+    name:"ব্লক D শিক্ষক",
     role:"হাউজ টিউটর",
     icon:"🏠",
     iconColor:"#a9822f",
@@ -7694,6 +7730,14 @@ const STAFF_DATA = {
     ],
   },
 };
+
+// নতুন হোস্টেল সুপার-এর প্রোফাইল (নামহীন; ছুটি সংক্রান্ত কাজ/ইতিহাস বাদ)
+STAFF_DATA.hsuper = Object.assign({}, STAFF_DATA.super, {
+  id:"hsuper", name:"হোস্টেল সুপার", role:"হোস্টেল সুপার", icon:"🏆",
+  tasks:(STAFF_DATA.super.tasks||[]).filter(t=>!/ছুটি/.test(t.txt)),
+  history:(STAFF_DATA.super.history||[]).filter(h=>!/ছুটি/.test(h.txt)),
+  perf:(STAFF_DATA.super.perf||[]).filter(p=>!/ছুটি/.test(p.label)),
+});
 
 let spFromPage = "dashboard";
 
@@ -8347,7 +8391,7 @@ function showStudentProfile(serial, fromPage){
   const delZone = document.getElementById("stup-delete-zone");
   if(delZone){
     const sessUser = (typeof getSessionUser==="function") ? getSessionUser() : null;
-    if(sessUser && (sessUser.role==="admin" || sessUser.role==="super")){
+    if(sessUser && (sessUser.role==="admin" || sessUser.role==="super" || sessUser.role==="hsuper")){
       delZone.innerHTML = `<div style="margin:0 16px 16px;text-align:center;">
         <button onclick="stuDeleteStudent(${s.serial})" style="background:#faf8f2;border:1px solid #f0caca;color:#c94545;font-size:12px;font-weight:700;padding:9px 16px;border-radius:20px;cursor:pointer;">🗑️ এই ছাত্রকে তালিকা থেকে মুছে ফেলুন (চলে গেছে)</button>
       </div>`;
@@ -8366,7 +8410,7 @@ let stupDuesCurrentSerial = null;
 function stupDuesRender(serial){
   stupDuesCurrentSerial = serial;
   const user = (typeof getSessionUser==="function") ? getSessionUser() : null;
-  const isSuper = user && user.role==="super";
+  const isSuper = user && (user.role==="super" || user.role==="hsuper");
   const viewEl = document.getElementById("stup-dues-view");
   const formEl = document.getElementById("stup-dues-form");
   const editBtn = document.getElementById("stup-dues-edit-btn");
@@ -8400,7 +8444,7 @@ function stupDuesToggleEdit(){
 
 function stupDuesSave(){
   const user = (typeof getSessionUser==="function") ? getSessionUser() : null;
-  if(!user || user.role!=="super"){ return; }
+  if(!user || (user.role!=="super" && user.role!=="hsuper")){ return; }
   const amount = parseFloat(document.getElementById("stup-dues-amount").value)||0;
   const note = document.getElementById("stup-dues-note").value.trim();
   const existingPayments = (STUDENT_DUES[stupDuesCurrentSerial] && Array.isArray(STUDENT_DUES[stupDuesCurrentSerial].payments)) ? STUDENT_DUES[stupDuesCurrentSerial].payments : [];
@@ -8564,7 +8608,7 @@ function findAndShowStudent(name){
   <div style="padding:14px 0 0;">
     <div class="ss-hero">
       <div class="ss-hero-top">
-        <div class="ss-hero-title">🏆 আবু জাহিদ — হোস্টেল সুপার</div>
+        <div class="ss-hero-title">🏆 হোস্টেল সুপার</div>
         <div class="ss-hero-time" id="sv-time">—</div>
       </div>
       <div class="ss-hero-sub">সকাল ৯টা — রাত ৯টা ডিউটি • আজকের সামগ্রিক অবস্থা</div>
@@ -8684,7 +8728,7 @@ function svInit(){
   const days=["রবিবার","সোমবার","মঙ্গলবার","বুধবার","বৃহস্পতিবার","শুক্রবার","শনিবার"];
   document.getElementById("sv-date").textContent=days[d.getDay()]+", "+bnSV(d.getDate())+" "+months[d.getMonth()];
   const heroTitleEl = document.querySelector(".ss-hero-title");
-  if(heroTitleEl){ const u=getSessionUser(); heroTitleEl.textContent="🏆 "+(u.name||"হোস্টেল সুপার")+" — হোস্টেল সুপার"; }
+  if(heroTitleEl){ const u=getSessionUser(); heroTitleEl.textContent = (u.role==="hsuper") ? "🏆 হোস্টেল সুপার" : "🎖️ "+(u.name||"")+" — অ্যাডমিন অফিসার"; }
   svUpdateTime();
   svRender();
 }
@@ -8939,17 +8983,17 @@ let rmCurrentBlock = "A";
 let rmCurrentRoom = null;
 
 const RM_BLOCKS = {
-  A:{label:"ব্লক A",floor:"দোতলা",supervisor:"শাহাদাত স্যার",classes:"চতুর্থ–সপ্তম",color:"#2f9e5c",ico:"🟢",
+  A:{label:"ব্লক A",floor:"দোতলা",supervisor:"ব্লক A শিক্ষক",classes:"চতুর্থ–সপ্তম",color:"#2f9e5c",ico:"🟢",
      rooms:[{no:"২০১",cap:6},{no:"২০২",cap:6},{no:"২০৩",cap:6},{no:"২০৪",cap:6},{no:"২০৫",cap:6},
             {no:"২০৬",cap:6},{no:"২০৭",cap:6},{no:"২০৮",cap:6},{no:"২০৯",cap:6},{no:"২১০",cap:4},
             {no:"২১১",cap:4},{no:"২১২",cap:4},{no:"২১৩",cap:4}]},
-  B:{label:"ব্লক B",floor:"দোতলা",supervisor:"আবুল হাসান স্যার",classes:"অষ্টম",color:"#8258c9",ico:"🟣",
+  B:{label:"ব্লক B",floor:"দোতলা",supervisor:"ব্লক B শিক্ষক",classes:"অষ্টম",color:"#8258c9",ico:"🟣",
      rooms:[{no:"২১৪",cap:4},{no:"২১৫",cap:4},{no:"২১৬",cap:4},{no:"২১৭",cap:4},
             {no:"২১৮",cap:4},{no:"২১৯",cap:4},{no:"২২০",cap:4},{no:"২২১",cap:4}]},
-  C:{label:"ব্লক C",floor:"তিনতলা",supervisor:"শরিফুল ইসলাম স্যার",classes:"নবম",color:"#1f9797",ico:"🔵",
+  C:{label:"ব্লক C",floor:"তিনতলা",supervisor:"ব্লক C শিক্ষক",classes:"নবম",color:"#1f9797",ico:"🔵",
      rooms:[{no:"৩০১",cap:4},{no:"৩০২",cap:4},{no:"৩০৩",cap:4},{no:"৩০৪",cap:4},
             {no:"৩০৫",cap:4},{no:"৩০৬",cap:4},{no:"৩০৭",cap:4},{no:"৩০৮",cap:4}]},
-  D:{label:"ব্লক D",floor:"তিনতলা",supervisor:"নিজাম উদ্দিন স্যার",classes:"দশম",color:"#a9822f",ico:"🟡",
+  D:{label:"ব্লক D",floor:"তিনতলা",supervisor:"ব্লক D শিক্ষক",classes:"দশম",color:"#a9822f",ico:"🟡",
      rooms:[{no:"৩০৯",cap:4},{no:"৩১০",cap:4},{no:"৩১১",cap:4},{no:"৩১২",cap:4},
             {no:"৩১৩",cap:4},{no:"৩১৪",cap:4},{no:"৩১৫",cap:4},{no:"৩১৬",cap:4}]},
 };
@@ -9238,7 +9282,7 @@ function srLoadTimelyFromFirebase(){
 
 function srOpenDifficultySettings(){
   const user = getSessionUser();
-  if(user.role!=='super' && user.role!=='admin'){
+  if(user.role!=='super' && user.role!=='hsuper' && user.role!=='admin'){
     alert('শুধুমাত্র হোস্টেল সুপার বা অ্যাডমিন ব্লকের কঠিনতা মাত্রা পরিবর্তন করতে পারবেন।');
     return;
   }
@@ -9313,7 +9357,7 @@ function srLoadAssignmentHistory(){
 function srReassignBlock(blk, newAssignedId){
   if(!newAssignedId) return;
   const user = getSessionUser();
-  if(!user || (user.role!=='super' && user.role!=='admin')){
+  if(!user || (user.role!=='super' && user.role!=='hsuper' && user.role!=='admin')){
     alert('শুধুমাত্র হোস্টেল সুপার বা অ্যাডমিন হাউজ টিউটর পুনর্বণ্টন করতে পারবেন।');
     return;
   }
@@ -9350,7 +9394,7 @@ function getAssignedIdAt(blk, ts){
 // ── ব্লক পুনর্বণ্টন UI (শুধু সুপার/অ্যাডমিন) ──
 function srOpenReassign(){
   const user = getSessionUser();
-  if(!user || (user.role!=='super' && user.role!=='admin')){
+  if(!user || (user.role!=='super' && user.role!=='hsuper' && user.role!=='admin')){
     alert('শুধুমাত্র হোস্টেল সুপার বা অ্যাডমিন হাউজ টিউটর পুনর্বণ্টন করতে পারবেন।');
     return;
   }
@@ -9477,7 +9521,7 @@ async function srBuildScores(period){
 function goStaffRanking(){
   if(typeof srLoadAssignmentHistory==="function") srLoadAssignmentHistory();
   const user = getSessionUser();
-  const canManage = user.role==='super' || user.role==='admin';
+  const canManage = user.role==='super' || user.role==='hsuper' || user.role==='admin';
   document.getElementById('sr-settings-btn').style.display = canManage ? 'flex' : 'none';
   document.getElementById('sr-sub').textContent = canManage
     ? 'ছাত্র পারফরম্যান্স + সময়মতো ইনপুট + পরিদর্শন'
@@ -11100,17 +11144,17 @@ const BR_ROOM_DATA = {
 
 // ব্লক কনফিগ
 const BR_BLOCKS={
-  A:{label:"ব্লক A",floor:"দোতলা",supervisor:"শাহাদাত স্যার",classes:"চতুর্থ–সপ্তম",color:"#2f9e5c",ico:"🟢",
+  A:{label:"ব্লক A",floor:"দোতলা",supervisor:"ব্লক A শিক্ষক",classes:"চতুর্থ–সপ্তম",color:"#2f9e5c",ico:"🟢",
      rooms:[{no:"২০১",cap:6},{no:"২০২",cap:6},{no:"২০৩",cap:6},{no:"২০৪",cap:6},{no:"২০৫",cap:6},
             {no:"২০৬",cap:6},{no:"২০৭",cap:6},{no:"২০৮",cap:6},{no:"২০৯",cap:6},
             {no:"২১০",cap:4},{no:"২১১",cap:4},{no:"২১২",cap:4},{no:"২১৩",cap:4}]},
-  B:{label:"ব্লক B",floor:"দোতলা",supervisor:"আবুল হাসান স্যার",classes:"অষ্টম",color:"#8258c9",ico:"🟣",
+  B:{label:"ব্লক B",floor:"দোতলা",supervisor:"ব্লক B শিক্ষক",classes:"অষ্টম",color:"#8258c9",ico:"🟣",
      rooms:[{no:"২১৪",cap:4},{no:"২১৫",cap:4},{no:"২১৬",cap:4},{no:"২১৭",cap:4},
             {no:"২১৮",cap:4},{no:"২১৯",cap:4},{no:"২২০",cap:4},{no:"২২১",cap:4}]},
-  C:{label:"ব্লক C",floor:"তিনতলা",supervisor:"শরিফুল ইসলাম স্যার",classes:"নবম",color:"#1f9797",ico:"🔵",
+  C:{label:"ব্লক C",floor:"তিনতলা",supervisor:"ব্লক C শিক্ষক",classes:"নবম",color:"#1f9797",ico:"🔵",
      rooms:[{no:"৩০১",cap:4},{no:"৩০২",cap:4},{no:"৩০৩",cap:4},{no:"৩০৪",cap:4},
             {no:"৩০৫",cap:4},{no:"৩০৬",cap:4},{no:"৩০৭",cap:4},{no:"৩০৮",cap:4}]},
-  D:{label:"ব্লক D",floor:"তিনতলা",supervisor:"নিজাম উদ্দিন স্যার",classes:"দশম",color:"#a9822f",ico:"🟡",
+  D:{label:"ব্লক D",floor:"তিনতলা",supervisor:"ব্লক D শিক্ষক",classes:"দশম",color:"#a9822f",ico:"🟡",
      rooms:[{no:"৩০৯",cap:4},{no:"৩১০",cap:4},{no:"৩১১",cap:4},{no:"৩১২",cap:4},
             {no:"৩১৩",cap:4},{no:"৩১৪",cap:4},{no:"৩১৫",cap:4},{no:"৩১৬",cap:4}]},
 };
@@ -11429,7 +11473,7 @@ function brRenderPage2(){
   const raw=localStorage.getItem("hms_user");
   const u=raw?JSON.parse(raw):{role:"super"};
   const isAdmin=(u.role==="admin"); // রুম নম্বর এডিট শুধু super admin
-  const canEditStudents=(u.role==="admin"||u.role==="super"); // ছাত্র পরিবর্তন শুধু সুপার ও অ্যাডমিন
+  const canEditStudents=(u.role==="admin"||u.role==="super"||u.role==="hsuper"); // ছাত্র পরিবর্তন শুধু সুপার ও অ্যাডমিন
   // হাউজ টিউটর (asst) — শুধু দেখতে পারবে
 
   document.getElementById("br-topbar-title").textContent=b.label+" — রুম তালিকা";
@@ -11480,7 +11524,7 @@ function brRenderPage2(){
       </div>`).join("");
 
     // রুম নম্বর এডিট (admin/super)
-    const roomNumRow=(u.role==="admin"||u.role==="super")
+    const roomNumRow=(u.role==="admin"||u.role==="super"||u.role==="hsuper")
       ?`<div style="margin-bottom:10px;">
           <div style="font-size:11px;color:#a9822f;margin-bottom:5px;font-weight:700;">🔢 রুম নম্বর (এডিট)</div>
           <input class="br-room-num-inp" id="br-rno-${r.no}" value="${r.no}" placeholder="রুম নম্বর"/>
@@ -12239,7 +12283,7 @@ function lvRenderDuesPayHistory(due){
 function lvDuesPay(){
   const user = (typeof getSessionUser==='function') ? getSessionUser() : null;
   if(!user || (user.role!=='super' && user.role!=='admin')){
-    lvShowToast('শুধুমাত্র হোস্টেল সুপার বা অ্যাডমিন টাকা জমা নিতে পারবেন।','err');
+    lvShowToast('শুধুমাত্র অ্যাডমিন অফিসার বা অ্যাডমিন টাকা জমা নিতে পারবেন।','err');
     return;
   }
   const serial = lvDuesCurrentSerial;
@@ -12268,7 +12312,10 @@ function lvDuesPay(){
   if(typeof stupDuesRender==='function' && typeof stupDuesCurrentSerial!=='undefined' && stupDuesCurrentSerial===serial) stupDuesRender(serial);
 }
 
+function lvCanManage(){ const u=(typeof getSessionUser==='function')?getSessionUser():null; return !!u && (u.role==='super' || u.role==='admin'); }
+
 function lvSubmit(){
+  if(!lvCanManage()){ lvShowToast('ছুটি দেওয়ার ক্ষমতা শুধুমাত্র অ্যাডমিন অফিসারের।','err'); return; }
   const sel = document.getElementById('lv-student-select');
   const serial = parseInt(sel ? sel.value : '');
   if(!serial){ lvShowToast('ছাত্র নির্বাচন করুন','err'); return; }
@@ -12328,6 +12375,7 @@ function lvSubmit(){
 }
 
 function lvDelete(id){
+  if(!lvCanManage()){ lvShowToast('ছুটির রেকর্ড মুছতে পারবেন শুধুমাত্র অ্যাডমিন অফিসার।','err'); return; }
   if(!confirm('এই ছুটির রেকর্ডটি মুছে ফেলতে চান?')) return;
   lvRecords = lvRecords.filter(r=>r.id!==id);
   if(typeof fbSet==='function') fbSet('leaveRecords/'+id, null);
@@ -12387,7 +12435,7 @@ function lvShowToast(msg,type){ typedToast('lv-toast','lv-toast',msg,type); } //
 // ছুটি বাড়ানো — জরুরি প্রয়োজনে চলমান/আসন্ন ছুটির মেয়াদ বাড়ানোর জন্য (শুধু হোস্টেল সুপার)
 function lvExtend(id){
   const user = (typeof getSessionUser==='function') ? getSessionUser() : null;
-  if(!user || user.role!=='super'){ lvShowToast('শুধুমাত্র হোস্টেল সুপার ছুটি বাড়াতে পারবেন।','err'); return; }
+  if(!user || user.role!=='super'){ lvShowToast('শুধুমাত্র অ্যাডমিন অফিসার ছুটি বাড়াতে পারবেন।','err'); return; }
   const rec = lvRecords.find(r=>r.id===id);
   if(!rec){ lvShowToast('রেকর্ড পাওয়া যায়নি।','err'); return; }
 
@@ -12426,7 +12474,7 @@ function lvExtend(id){
 function lvBulkCloseHostel(){
   const user = (typeof getSessionUser==='function') ? getSessionUser() : null;
   if(!user || (user.role!=='super' && user.role!=='admin')){
-    lvShowToast('শুধুমাত্র হোস্টেল সুপার বা অ্যাডমিন হোস্টেল বন্ধ ঘোষণা করতে পারবেন।','err');
+    lvShowToast('শুধুমাত্র অ্যাডমিন অফিসার বা অ্যাডমিন হোস্টেল বন্ধ ঘোষণা করতে পারবেন।','err');
     return;
   }
   if(allStudents.length===0) assignRooms();
@@ -12511,7 +12559,7 @@ function lvRenderClosures(){
 function lvBulkDeleteClosure(closureId){
   const user = (typeof getSessionUser==='function') ? getSessionUser() : null;
   if(!user || (user.role!=='super' && user.role!=='admin')){
-    lvShowToast('শুধুমাত্র হোস্টেল সুপার বা অ্যাডমিন এটি বাতিল করতে পারবেন।','err');
+    lvShowToast('শুধুমাত্র অ্যাডমিন অফিসার বা অ্যাডমিন এটি বাতিল করতে পারবেন।','err');
     return;
   }
   const affected = lvRecords.filter(r=>r.closureId===closureId);
@@ -12532,8 +12580,8 @@ function goLeave(){
   if(!user || (user.role!=='super' && user.role!=='admin')){
     if(guardEl) guardEl.innerHTML = `<div class="lv-guard">
       <div style="font-size:44px;margin-bottom:12px;">🔒</div>
-      <div style="font-size:14px;font-weight:700;color:#24313b;margin-bottom:6px;">এই অংশটি শুধুমাত্র হোস্টেল সুপার ও অ্যাডমিনের জন্য</div>
-      <div style="font-size:12px;">ছুটির অনুমোদন শুধুমাত্র হোস্টেল সুপার বা অ্যাডমিন দিতে পারবেন।</div>
+      <div style="font-size:14px;font-weight:700;color:#24313b;margin-bottom:6px;">এই অংশটি শুধুমাত্র অ্যাডমিন অফিসার ও অ্যাডমিনের জন্য</div>
+      <div style="font-size:12px;">ছুটির অনুমোদন শুধুমাত্র অ্যাডমিন অফিসার বা অ্যাডমিন দিতে পারবেন।</div>
     </div>`;
     if(contentEl) contentEl.style.display='none';
     showPage("leave");
@@ -12706,7 +12754,7 @@ fbListen('asstBlockMap', data=>{
 </script>
 
 <!-- ══════════════════════════════════════════════════════════
-     আগে ফিরে আসা ছাত্র নিশ্চিতকরণ — শুধুমাত্র অ্যাডমিন ও হোস্টেল সুপার
+     আগে ফিরে আসা ছাত্র নিশ্চিতকরণ — শুধুমাত্র অ্যাডমিন ও অ্যাডমিন অফিসার
      কখনো কখনো ছুটি শেষ হওয়ার আগেই ছাত্র হোস্টেলে ফিরে আসে — এই পেজ থেকে
      সেটা একনলেজ করলে ছাত্র সাথে সাথে "উপস্থিত" হিসেবে দেখাবে
      ══════════════════════════════════════════════════════════ -->
@@ -12738,7 +12786,7 @@ fbListen('asstBlockMap', data=>{
 function goEarlyReturn(){
   const user = (typeof getSessionUser==='function') ? getSessionUser() : null;
   if(!user || (user.role!=='admin' && user.role!=='super')){
-    alert('এই সুবিধা শুধুমাত্র অ্যাডমিন ও হোস্টেল সুপারের জন্য।');
+    alert('এই সুবিধা শুধুমাত্র অ্যাডমিন ও অ্যাডমিন অফিসারের জন্য।');
     return;
   }
   erRenderList();
@@ -12819,6 +12867,196 @@ function erMarkReturned(id){
   if(typeof renderDashboard==='function') renderDashboard();
   if(typeof renderDashBlockCards==='function') renderDashBlockCards();
   alert('✅ '+rec.stuName+' এখন থেকে "উপস্থিত" হিসেবে দেখানো হবে।'+(unauth.days>0?' (অনুমোদনহীন ছুটি: '+lvBn(unauth.days)+' দিন প্রোফাইলে সংরক্ষিত হয়েছে)':''));
+}
+</script>
+
+<!-- ══ PAGE: হোস্টেল অবস্থান রিপোর্ট (শুধুমাত্র সুপার অ্যাডমিন ও অ্যাডমিন অফিসার) ══ -->
+<style>
+.stay-card{background:#fff;border:1px solid #e2dbc7;border-radius:13px;margin:0 16px 10px;overflow:hidden;}
+.stay-hd{padding:12px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;}
+.stay-nm{font-size:13px;font-weight:700;color:#24313b;}
+.stay-meta{font-size:11px;color:#8b98a3;margin-top:2px;}
+.stay-pct{margin-left:auto;font-size:12px;font-weight:700;border-radius:10px;padding:3px 9px;}
+.stay-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:0 14px 12px;}
+.stay-cell{background:#faf8f2;border:1px solid #e2dbc7;border-radius:10px;padding:7px 4px;text-align:center;}
+.stay-cell b{display:block;font-size:15px;color:#24313b;}
+.stay-cell span{font-size:9.5px;color:#8b98a3;}
+.stay-detail{border-top:1px solid #e2dbc7;padding:10px 14px;background:#faf8f2;font-size:12px;color:#34444f;}
+.stay-item{display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px dashed #e2dbc7;}
+.stay-item:last-child{border-bottom:none;}
+.stay-sum{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 16px 12px;}
+.stay-sum div{background:#fff;border:1px solid #e2dbc7;border-radius:12px;padding:10px;text-align:center;}
+.stay-sum b{display:block;font-size:18px;color:#24313b;}
+.stay-sum span{font-size:10.5px;color:#8b98a3;}
+.stay-chip{font-size:11px;font-weight:600;border:1.5px solid #e2dbc7;border-radius:20px;padding:5px 11px;background:#fff;color:#34444f;cursor:pointer;}
+.stay-chip.on{background:#24313b;color:#fff;border-color:#24313b;}
+</style>
+<div id="page-stay-report" class="page" style="background:#faf8f2;min-height:100vh;padding-bottom:80px;">
+  <div class="topbar">
+    <div class="tb-back" onclick="goDashboard()">←</div>
+    <div class="tb-info"><div class="tb-title">📆 হোস্টেল অবস্থান রিপোর্ট</div><div class="tb-sub" id="stay-sub">লোড হচ্ছে...</div></div>
+  </div>
+  <div id="stay-body" style="padding-top:12px;"></div>
+</div>
+
+<script>
+// হিসাব: থাকার কথা = হিসাব-শুরুর তারিখ থেকে আজ পর্যন্ত মোট দিন।
+// অনুপস্থিত = অনুমোদিত ছুটির দিন (হোস্টেল-বন্ধের দিনসহ) ∪ অনুমোদনহীন দিন (ফেরার তারিখের পর) — একই দিন দুবার গোনা হয় না।
+// স্বল্পমেয়াদি (ঘন্টাভিত্তিক) ছুটি দিনের হিসাবে ধরা হয় না — আলাদা ঘন্টায় দেখানো হয়।
+let stayStartISO = null, stayUnsub = null, stayFilter = {blk:'all', q:'', sort:'absent'}, stayRows = [], stayOpen = null;
+
+function stayCanView(){ const u=(typeof getSessionUser==='function')?getSessionUser():null; return !!u && (u.role==='admin' || u.role==='super'); }
+function stayAddDays(iso,n){ const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+n); return lvISO(d); }
+function stayRange(a,b){ const out=[]; if(!a||!b||a>b) return out; let c=a,g=0; while(c<=b && g<2000){ out.push(c); c=stayAddDays(c,1); g++; } return out; }
+function stayFmt(iso){ return lvFmtDate(new Date(iso+'T00:00:00')); }
+
+function goStayReport(){
+  if(!stayCanView()){ alert('এই রিপোর্ট শুধুমাত্র সুপার অ্যাডমিন ও অ্যাডমিন অফিসার দেখতে পারবেন।'); return; }
+  if(!stayUnsub){
+    stayUnsub = fbListen('settings/stayReportStart', v=>{ stayStartISO = (typeof v==='string') ? v : null; stayRender(); });
+  }
+  showPage('stay-report');
+  stayRender();
+}
+
+function stayCompute(){
+  const today = lvTodayISO(), start = stayStartISO;
+  const expected = (start && start<=today) ? stayRange(start,today).length : 0;
+  const inWin = d => d>=start && d<=today;
+  const by = {};
+  (typeof lvRecords!=='undefined' ? lvRecords : []).forEach(r=>{
+    let k = r.stuSerial;
+    if(k==null){ const m = allStudents.find(x=>x.name===r.stuName); k = m ? m.serial : null; }
+    if(k==null) return;
+    (by[String(k)] = by[String(k)] || []).push(r);
+  });
+  return allStudents.map(s=>{
+    const appr=new Set(), un=new Set(), clo=new Set(), items=[];
+    let shortHrs=0;
+    (by[String(s.serial)]||[]).forEach(r=>{
+      if(r.isShortLeave){
+        if(inWin(r.fromISO)){ shortHrs += parseInt(r.hours)||0; items.push({k:'short', from:r.fromISO, to:r.fromISO, days:0, hours:parseInt(r.hours)||0, reason:r.reason}); }
+        return;
+      }
+      const hasU = (parseInt(r.unauthorizedDays)||0)>0 && r.unauthorizedFromISO;
+      const aTo = hasU ? r.unauthorizedFromISO : r.toISO; // আগে ফেরার সময় toISO বদলে যায় — অনুমোদিত অংশ আসল শেষ তারিখ পর্যন্তই ধরা হয়
+      const a = stayRange(r.fromISO, aTo).filter(inWin);
+      a.forEach(d=>{ appr.add(d); if(r.closureId) clo.add(d); });
+      if(a.length) items.push({k: r.closureId?'closure':'leave', from:a[0], to:a[a.length-1], days:a.length, reason:r.reason});
+      let u = [];
+      if(hasU) u = stayRange(stayAddDays(r.unauthorizedFromISO,1), r.unauthorizedToISO);
+      else if(!r.returnedEarly && r.toISO < today) u = stayRange(stayAddDays(r.toISO,1), today);
+      u = u.filter(inWin);
+      u.forEach(d=>un.add(d));
+      if(u.length) items.push({k:'unauth', from:u[0], to:u[u.length-1], days:u.length, reason:'ফেরার তারিখের পর অনুমতিহীন'});
+    });
+    appr.forEach(d=>un.delete(d)); // একই দিন দুবার নয়
+    const approved = appr.size, unauth = un.size, absent = approved + unauth;
+    const stayed = Math.max(0, expected - absent);
+    items.sort((x,y)=> x.from<y.from?-1:1);
+    return {serial:s.serial, name:s.name, cls:s.cls, blk:s.block||s.blk, expected, stayed, approved, closure:clo.size, unauth, absent, shortHrs, items};
+  });
+}
+
+function stayRender(){
+  const body = document.getElementById('stay-body'); if(!body) return;
+  if(!stayCanView()){ body.innerHTML = '<div style="text-align:center;padding:40px;color:#8b98a3">🔒 এই রিপোর্ট শুধুমাত্র সুপার অ্যাডমিন ও অ্যাডমিন অফিসার দেখতে পারবেন।</div>'; return; }
+  const sub = document.getElementById('stay-sub');
+  const today = lvTodayISO();
+
+  // হিসাব-শুরুর তারিখ নির্ধারণ/পরিবর্তন
+  let earliest = today;
+  (typeof lvRecords!=='undefined' ? lvRecords : []).forEach(r=>{ if(r.fromISO && r.fromISO<earliest) earliest=r.fromISO; });
+  const dateBox = `
+    <div style="margin:0 16px 12px;background:#fff;border:1px solid #e2dbc7;border-radius:13px;padding:12px 14px;">
+      <div style="font-size:12px;font-weight:700;color:#24313b;margin-bottom:6px;">📅 হিসাব শুরুর তারিখ (অ্যাপ চালুর দিন)</div>
+      <div style="display:flex;gap:8px;">
+        <input type="date" id="stay-start-input" value="${stayStartISO || earliest}" max="${today}" style="flex:1;padding:9px;border:1.5px solid #e2dbc7;border-radius:10px;font-family:inherit;font-size:13px;">
+        <button onclick="staySaveStart()" style="padding:9px 14px;background:#24313b;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:12px;cursor:pointer;">সংরক্ষণ</button>
+      </div>
+      <div style="font-size:10.5px;color:#8b98a3;margin-top:6px;">এই তারিখ থেকে আজ পর্যন্ত প্রত্যেক ছাত্রের হোস্টেলে থাকার কথা ধরা হবে।${stayStartISO?'':' <b style="color:#c94545">আগে তারিখ সংরক্ষণ করুন।</b>'}</div>
+    </div>`;
+  if(!stayStartISO){ if(sub) sub.textContent='শুরুর তারিখ নির্ধারণ করুন'; body.innerHTML = dateBox; return; }
+
+  stayRows = stayCompute();
+  const tot = stayRows.reduce((a,r)=>({appr:a.appr+r.approved, un:a.un+r.unauth}), {appr:0,un:0});
+  const expected = stayRows.length ? stayRows[0].expected : 0;
+  if(sub) sub.textContent = stayFmt(stayStartISO)+' থেকে আজ — মোট '+bnDigits(expected)+' দিন';
+
+  let rows = stayRows.filter(r=> (stayFilter.blk==='all' || r.blk===stayFilter.blk) && (!stayFilter.q || r.name.toLowerCase().includes(stayFilter.q.toLowerCase())));
+  rows.sort((a,b)=> stayFilter.sort==='name' ? a.name.localeCompare(b.name) : stayFilter.sort==='unauth' ? (b.unauth-a.unauth || b.absent-a.absent) : (b.absent-a.absent || a.name.localeCompare(b.name)));
+
+  const chip = (v,l)=>`<span class="stay-chip ${stayFilter.blk===v?'on':''}" onclick="stayFilter.blk='${v}';stayRender()">${l}</span>`;
+  const sch = (v,l)=>`<span class="stay-chip ${stayFilter.sort===v?'on':''}" onclick="stayFilter.sort='${v}';stayRender()">${l}</span>`;
+  const kind = {leave:'🚪 অনুমোদিত ছুটি', closure:'🏫 হোস্টেল বন্ধ', unauth:'🚫 অনুমতিহীন', short:'⏱️ স্বল্পমেয়াদি'};
+
+  body.innerHTML = dateBox + `
+    <div class="stay-sum">
+      <div><b>${bnDigits(stayRows.length)}</b><span>মোট ছাত্র</span></div>
+      <div><b>${bnDigits(expected)}</b><span>থাকার কথা (দিন)</span></div>
+      <div><b style="color:#a9822f">${bnDigits(tot.appr)}</b><span>মোট অনুমোদিত ছুটি (ছাত্র-দিন)</span></div>
+      <div><b style="color:#c94545">${bnDigits(tot.un)}</b><span>মোট অনুমতিহীন (ছাত্র-দিন)</span></div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin:0 16px 8px;">${chip('all','সব ব্লক')}${['A','B','C','D'].map(b=>chip(b,'ব্লক '+b)).join('')}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin:0 16px 8px;">${sch('absent','বেশি অনুপস্থিত আগে')}${sch('unauth','বেশি অনুমতিহীন আগে')}${sch('name','নাম অনুসারে')}</div>
+    <div style="margin:0 16px 12px;display:flex;gap:8px;">
+      <input id="stay-search" placeholder="ছাত্রের নাম খুঁজুন" value="${escHtml(stayFilter.q)}" oninput="stayFilter.q=this.value;stayRenderKeepFocus()" style="flex:1;padding:9px;border:1.5px solid #e2dbc7;border-radius:10px;font-family:inherit;font-size:13px;">
+      <button onclick="stayPrint()" style="padding:9px 12px;background:#fff;border:1.5px solid #e2dbc7;border-radius:10px;font-weight:700;font-size:12px;cursor:pointer;">🖨️ প্রিন্ট</button>
+    </div>` + (rows.length ? rows.map(r=>{
+      const pct = r.expected ? Math.round(r.stayed*100/r.expected) : 0;
+      const col = pct>=90 ? ['#eaf7ee','#2f9e5c'] : pct>=75 ? ['#fdf3dc','#a9822f'] : ['#fbe4e4','#c94545'];
+      const open = stayOpen===r.serial;
+      return `<div class="stay-card">
+        <div class="stay-hd" onclick="stayOpen=(stayOpen===${r.serial}?null:${r.serial});stayRender()">
+          <div><div class="stay-nm">${escHtml(r.name)}</div><div class="stay-meta">${CLASS_BN[r.cls]||r.cls} শ্রেণী • ব্লক ${r.blk}</div></div>
+          <div class="stay-pct" style="background:${col[0]};color:${col[1]}">${bnDigits(pct)}% ছিল</div>
+        </div>
+        <div class="stay-grid">
+          <div class="stay-cell"><b>${bnDigits(r.expected)}</b><span>থাকার কথা</span></div>
+          <div class="stay-cell"><b style="color:#2f9e5c">${bnDigits(r.stayed)}</b><span>হোস্টেলে ছিল</span></div>
+          <div class="stay-cell"><b style="color:#a9822f">${bnDigits(r.approved)}</b><span>অনুমতি নিয়ে বাড়িতে</span></div>
+          <div class="stay-cell"><b style="color:#c94545">${bnDigits(r.unauth)}</b><span>অনুমতি ছাড়া বাড়িতে</span></div>
+        </div>
+        ${open ? `<div class="stay-detail">
+          <div style="font-weight:700;margin-bottom:6px;">মোট অনুপস্থিত: ${bnDigits(r.absent)} দিন${r.closure?` (এর মধ্যে হোস্টেল বন্ধ: ${bnDigits(r.closure)} দিন)`:''}${r.shortHrs?` • স্বল্পমেয়াদি ছুটি: ${bnDigits(r.shortHrs)} ঘন্টা`:''}</div>
+          ${r.items.length ? r.items.map(it=>`<div class="stay-item"><span>${kind[it.k]}<br><span style="color:#8b98a3;font-size:10.5px">${escHtml(it.reason||'')}</span></span><span style="text-align:right">${it.from===it.to?stayFmt(it.from):stayFmt(it.from)+'<br>– '+stayFmt(it.to)}<br><b>${it.k==='short'?bnDigits(it.hours)+' ঘন্টা':bnDigits(it.days)+' দিন'}</b></span></div>`).join('') : '<div style="color:#8b98a3">কোনো ছুটির রেকর্ড নেই — পুরো সময় হোস্টেলে ছিল।</div>'}
+        </div>` : ''}
+      </div>`;
+    }).join('') : '<div style="text-align:center;padding:30px;color:#8b98a3">কোনো ছাত্র পাওয়া যায়নি</div>') + `
+    <div style="margin:6px 16px 0;font-size:10.5px;color:#8b98a3;line-height:1.6;">
+      ℹ️ সব ছাত্রের জন্য একই শুরুর তারিখ ধরা হয়েছে (ভর্তির তারিখ অ্যাপে সংরক্ষিত নেই)। ফেরার তারিখের পর "ফিরে এসেছে" নিশ্চিত না করা পর্যন্ত অনুমতিহীন দিন প্রতিদিন বাড়তে থাকে। স্বল্পমেয়াদি (ঘন্টাভিত্তিক) ছুটি দিনের হিসাবে ধরা হয়নি।
+    </div>`;
+}
+
+function stayRenderKeepFocus(){
+  stayRender();
+  const el = document.getElementById('stay-search');
+  if(el){ el.focus(); const n = el.value.length; try{ el.setSelectionRange(n,n); }catch(e){} }
+}
+
+function staySaveStart(){
+  if(!stayCanView()) return;
+  const v = (document.getElementById('stay-start-input')||{}).value;
+  if(!v){ alert('তারিখ নির্বাচন করুন'); return; }
+  if(v > lvTodayISO()){ alert('আজকের পরের তারিখ দেওয়া যাবে না'); return; }
+  stayStartISO = v;
+  fbSet('settings/stayReportStart', v);
+  stayRender();
+}
+
+function stayPrint(){
+  if(!stayCanView()) return;
+  let rows = stayRows.filter(r=> stayFilter.blk==='all' || r.blk===stayFilter.blk);
+  rows.sort((a,b)=> b.absent-a.absent || a.name.localeCompare(b.name));
+  const exp = rows.length ? rows[0].expected : 0;
+  const w = window.open('', '_blank');
+  if(!w){ alert('প্রিন্ট উইন্ডো খোলা যায়নি — ব্রাউজারের পপ-আপ অনুমতি দিন।'); return; }
+  w.document.write(`<html><head><meta charset="utf-8"><title>হোস্টেল অবস্থান রিপোর্ট</title><style>body{font-family:'Hind Siliguri',sans-serif;padding:16px}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #999;padding:5px 6px;text-align:center}td:nth-child(2){text-align:left}th{background:#eee}</style></head><body>
+    <h3>হোস্টেল অবস্থান রিপোর্ট</h3><div style="font-size:12px;margin-bottom:8px">${stayFmt(stayStartISO)} থেকে ${stayFmt(lvTodayISO())} — মোট ${bnDigits(exp)} দিন${stayFilter.blk!=='all'?' • ব্লক '+stayFilter.blk:''}</div>
+    <table><tr><th>ক্র.</th><th>নাম</th><th>শ্রেণী</th><th>ব্লক</th><th>থাকার কথা</th><th>ছিল</th><th>অনুমতি নিয়ে বাড়িতে</th><th>অনুমতি ছাড়া বাড়িতে</th></tr>
+    ${rows.map((r,i)=>`<tr><td>${bnDigits(i+1)}</td><td>${escHtml(r.name)}</td><td>${CLASS_BN[r.cls]||r.cls}</td><td>${r.blk}</td><td>${bnDigits(r.expected)}</td><td>${bnDigits(r.stayed)}</td><td>${bnDigits(r.approved)}</td><td>${bnDigits(r.unauth)}</td></tr>`).join('')}
+    </table><script>window.onload=function(){window.print();}<\/script></body></html>`);
+  w.document.close();
 }
 </script>
 
@@ -13216,7 +13454,7 @@ function rpListNav(delta){
 // একজন নির্দিষ্ট স্টাফের বিস্তারিত তালিকা — নিজে দেখলে শুধু-পাঠযোগ্য, admin/super দেখলে dismiss/fill অপশন-সহ
 async function rpOpenStaff(type, key){
   const user = getSessionUser();
-  const canEdit = user.role==='admin' || user.role==='super';
+  const canEdit = user.role==='admin' || user.role==='super' || user.role==='hsuper';
   rpCurrentView = {type, key};
   const name = type==='arabic'
     ? (ARABIC_TEACHER_NAMES[key]||key)
@@ -13270,7 +13508,7 @@ async function rpOpenStaff(type, key){
 // admin/super — তালিকা থেকে একটা নির্দিষ্ট আইটেম বাদ দেওয়া (যেমন ঐ ছাত্র/দিন আসলে প্রযোজ্য ছিল না)
 function rpDismiss(itemKey){
   const user = getSessionUser();
-  if(!(user.role==='admin'||user.role==='super')) return;
+  if(!(user.role==='admin'||user.role==='super'||user.role==='hsuper')) return;
   const note = (typeof prompt==='function') ? (prompt('বাদ দেওয়ার কারণ লিখুন (ঐচ্ছিক):')||'') : '';
   const rec = {status:'dismissed', by:user.name, at:Date.now(), note};
   rpActions[itemKey] = rec;
@@ -13281,7 +13519,7 @@ function rpDismiss(itemKey){
 // admin/super — সংশ্লিষ্ট শিক্ষকের পক্ষে তথ্য ইনপুট দেওয়া হয়েছে বলে চিহ্নিত করা (কারণ/বিবরণ বাধ্যতামূলক, অডিট-ট্রেইল হিসেবে থাকবে)
 function rpMarkFilled(itemKey){
   const user = getSessionUser();
-  if(!(user.role==='admin'||user.role==='super')) return;
+  if(!(user.role==='admin'||user.role==='super'||user.role==='hsuper')) return;
   const note = (typeof prompt==='function') ? prompt('শিক্ষকের পক্ষে কী তথ্য/ব্যাখ্যা ইনপুট দেওয়া হলো? (আবশ্যক — নথিভুক্ত থাকবে)') : null;
   if(!note){ alert('বিবরণ ছাড়া সংরক্ষণ করা যাবে না।'); return; }
   const rec = {status:'filled', by:user.name, at:Date.now(), note};
@@ -13437,7 +13675,7 @@ async function sdrRenderReport(type, key){
 
   const canPrev = dateKey > RP_TRACKING_START_KEY;
   const canNext = dateKey < todayKey;
-  const backBtn = (user.role==='admin'||user.role==='super') ? `<div onclick="sdrCurrentView=null;showPage('staff-daily-report');sdrRenderStaffPicker();" style="cursor:pointer;font-size:12px;color:#5c6f7a;margin:0 16px 8px;">← সবার তালিকায় ফিরে যান</div>` : '';
+  const backBtn = (user.role==='admin'||user.role==='super'||user.role==='hsuper') ? `<div onclick="sdrCurrentView=null;showPage('staff-daily-report');sdrRenderStaffPicker();" style="cursor:pointer;font-size:12px;color:#5c6f7a;margin:0 16px 8px;">← সবার তালিকায় ফিরে যান</div>` : '';
 
   const toolbar = `${backBtn}<div class="sdr-toolbar">
     <div class="rpds-nav ${canPrev?'':'disabled'}" onclick="${canPrev?'sdrNav(-1)':''}">‹</div>
@@ -13727,7 +13965,7 @@ function rpFdShowList(listId){
   document.getElementById('nsOptTitle').textContent = item.title;
   const listEl = document.getElementById('nsOptList');
   const user = (typeof getSessionUser==='function') ? getSessionUser() : null;
-  const canResolve = !!(item.isUnmarked && user && (user.role==='admin' || user.role==='super'));
+  const canResolve = !!(item.isUnmarked && user && (user.role==='admin' || user.role==='super' || user.role==='hsuper'));
 
   if(!item.students.length){
     listEl.innerHTML = '<div style="text-align:center;color:#5c6f7a;font-size:13px;padding:10px 0;">কোনো ছাত্র নেই</div>';
@@ -13767,7 +14005,7 @@ function rpFdShowList(listId){
 // admin/super — নির্দিষ্ট একজন ছাত্রের বাকি-থাকা রিপোর্ট-আইটেম বাদ দেওয়া (প্রযোজ্য ছিল না বলে চিহ্নিত করা)
 function rpStuDismiss(itemKey, listId){
   const user = getSessionUser();
-  if(!(user.role==='admin'||user.role==='super')) return;
+  if(!(user.role==='admin'||user.role==='super'||user.role==='hsuper')) return;
   const note = (typeof prompt==='function') ? (prompt('বাদ দেওয়ার কারণ লিখুন (ঐচ্ছিক):')||'') : '';
   const rec = {status:'dismissed', by:user.name, at:Date.now(), note};
   rpStuActions[itemKey] = rec;
@@ -13777,7 +14015,7 @@ function rpStuDismiss(itemKey, listId){
 // admin/super — নির্দিষ্ট একজন ছাত্রের বাকি-থাকা রিপোর্ট-আইটেম হাউজ টিউটরের পক্ষে পূরণ/সমাধান করা (কারণ/বিবরণ বাধ্যতামূলক)
 function rpStuMarkFilled(itemKey, listId){
   const user = getSessionUser();
-  if(!(user.role==='admin'||user.role==='super')) return;
+  if(!(user.role==='admin'||user.role==='super'||user.role==='hsuper')) return;
   const note = (typeof prompt==='function') ? prompt('এই ছাত্রের ব্যাপারে কী তথ্য/ব্যাখ্যা ইনপুট দেওয়া হলো? (আবশ্যক — নথিভুক্ত থাকবে)') : null;
   if(!note){ alert('বিবরণ ছাড়া সংরক্ষণ করা যাবে না।'); return; }
   const rec = {status:'filled', by:user.name, at:Date.now(), note};
@@ -14209,13 +14447,17 @@ let sgLoaded = false;
 let sgShowResolved = false;
 let sgResolveTarget = null;
 
+function sgDisplayName(r){
+  const rec = (typeof USERS!=='undefined' && USERS[r.byRole]) ? USERS[r.byRole].find(x=>x.id===r.byId) : null;
+  return rec ? rec.name : r.byName;
+}
 function sgCanSubmit(){
   const u = getSessionUser();
   return u.role === 'asst' || u.role === 'arabic';
 }
 function sgCanResolve(){
   const u = getSessionUser();
-  return u.role === 'super' || u.role === 'admin';
+  return u.role === 'super' || u.role === 'hsuper' || u.role === 'admin';
 }
 
 function sgLoad(){
@@ -14297,7 +14539,7 @@ function sgCardHtml(id, r, resolved){
   return `<div class="sg-card${resolved?' resolved':''}">
     <div class="sg-card-top">
       <div>
-        <div class="sg-by">${sgEsc(r.byName)}${r.blk?' — ব্লক '+r.blk:''}</div>
+        <div class="sg-by">${sgEsc(sgDisplayName(r))}${r.blk?' — ব্লক '+r.blk:''}</div>
         <div class="sg-role">${sgEsc(r.byRoleLabel||r.byRole)}</div>
       </div>
       <div class="sg-time">🗓️ ${sgEsc(r.dateBn)}, ${sgEsc(r.timeBn)}</div>
