@@ -12909,6 +12909,31 @@ function stayCanView(){ const u=(typeof getSessionUser==='function')?getSessionU
 function stayAddDays(iso,n){ const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+n); return lvISO(d); }
 function stayRange(a,b){ const out=[]; if(!a||!b||a>b) return out; let c=a,g=0; while(c<=b && g<2000){ out.push(c); c=stayAddDays(c,1); g++; } return out; }
 function stayFmt(iso){ return lvFmtDate(new Date(iso+'T00:00:00')); }
+// ছোট আকারে তারিখ: "৫ অক্টোবর", চলতি বছরের না হলে বছরসহ
+function stayShort(iso){
+  const d = new Date(iso+'T00:00:00'), cy = new Date().getFullYear();
+  return lvBn(d.getDate())+' '+LV_BN_MONTHS[d.getMonth()]+(d.getFullYear()!==cy ? ' '+lvBn(d.getFullYear()) : '');
+}
+function stayRangeTxt(a,b){
+  if(a===b) return stayShort(a);
+  const da=new Date(a+'T00:00:00'), db=new Date(b+'T00:00:00');
+  if(da.getMonth()===db.getMonth() && da.getFullYear()===db.getFullYear())
+    return lvBn(da.getDate())+'–'+stayShort(b);
+  return stayShort(a)+' – '+stayShort(b);
+}
+// তারিখের সেট → পরপর তারিখগুলো জুড়ে [শুরু, শেষ] তালিকা
+function stayMerge(set){
+  const arr=[...set].sort(), out=[]; let st=null, pv=null;
+  arr.forEach(d=>{ if(st===null){st=pv=d;} else if(stayAddDays(pv,1)===d){pv=d;} else {out.push([st,pv]); st=pv=d;} });
+  if(st!==null) out.push([st,pv]);
+  return out;
+}
+function stayDatesTxt(r){
+  return {
+    a: r.apprR.map(x=>stayRangeTxt(x[0],x[1])).join(', '),
+    u: r.unR.map(x=>stayRangeTxt(x[0],x[1])).join(', ')
+  };
+}
 
 function goStayReport(){
   if(!stayCanView()){ alert('এই রিপোর্ট শুধুমাত্র সুপার অ্যাডমিন ও অ্যাডমিন অফিসার দেখতে পারবেন।'); return; }
@@ -12954,7 +12979,7 @@ function stayCompute(){
     const approved = appr.size, unauth = un.size, absent = approved + unauth;
     const stayed = Math.max(0, expected - absent);
     items.sort((x,y)=> x.from<y.from?-1:1);
-    return {serial:s.serial, name:s.name, cls:s.cls, blk:s.block||s.blk, expected, stayed, approved, closure:clo.size, unauth, absent, shortHrs, items};
+    return {serial:s.serial, name:s.name, cls:s.cls, blk:s.block||s.blk, expected, stayed, approved, closure:clo.size, unauth, absent, shortHrs, items, apprR:stayMerge(appr), unR:stayMerge(un)};
   });
 }
 
@@ -13002,6 +13027,7 @@ function stayRender(){
     <div style="margin:0 16px 12px;display:flex;gap:8px;">
       <input id="stay-search" placeholder="ছাত্রের নাম খুঁজুন" value="${escHtml(stayFilter.q)}" oninput="stayFilter.q=this.value;stayRenderKeepFocus()" style="flex:1;padding:9px;border:1.5px solid #e2dbc7;border-radius:10px;font-family:inherit;font-size:13px;">
       <button onclick="stayPrint()" style="padding:9px 12px;background:#fff;border:1.5px solid #e2dbc7;border-radius:10px;font-weight:700;font-size:12px;cursor:pointer;">🖨️ প্রিন্ট</button>
+      <button id="stay-pdf-btn" onclick="stayDownloadPdf()" style="padding:9px 12px;background:#24313b;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:12px;cursor:pointer;">📄 PDF</button>
     </div>` + (rows.length ? rows.map(r=>{
       const pct = r.expected ? Math.round(r.stayed*100/r.expected) : 0;
       const col = pct>=90 ? ['#eaf7ee','#2f9e5c'] : pct>=75 ? ['#fdf3dc','#a9822f'] : ['#fbe4e4','#c94545'];
@@ -13017,6 +13043,7 @@ function stayRender(){
           <div class="stay-cell"><b style="color:#a9822f">${bnDigits(r.approved)}</b><span>অনুমতি নিয়ে বাড়িতে</span></div>
           <div class="stay-cell"><b style="color:#c94545">${bnDigits(r.unauth)}</b><span>অনুমতি ছাড়া বাড়িতে</span></div>
         </div>
+        ${r.absent ? (()=>{ const t=stayDatesTxt(r); return `<div style="padding:0 14px 10px;font-size:10.5px;line-height:1.6;color:#6b7a86;">📅 অনুপস্থিত: ${t.a?`<span>${t.a}</span>`:''}${t.a&&t.u?' • ':''}${t.u?`<span style="color:#c94545;font-weight:600;">🚫 ${t.u}</span>`:''}</div>`; })() : ''}
         ${open ? `<div class="stay-detail">
           <div style="font-weight:700;margin-bottom:6px;">মোট অনুপস্থিত: ${bnDigits(r.absent)} দিন${r.closure?` (এর মধ্যে হোস্টেল বন্ধ: ${bnDigits(r.closure)} দিন)`:''}${r.shortHrs?` • স্বল্পমেয়াদি ছুটি: ${bnDigits(r.shortHrs)} ঘন্টা`:''}</div>
           ${r.items.length ? r.items.map(it=>`<div class="stay-item"><span>${kind[it.k]}<br><span style="color:#8b98a3;font-size:10.5px">${escHtml(it.reason||'')}</span></span><span style="text-align:right">${it.from===it.to?stayFmt(it.from):stayFmt(it.from)+'<br>– '+stayFmt(it.to)}<br><b>${it.k==='short'?bnDigits(it.hours)+' ঘন্টা':bnDigits(it.days)+' দিন'}</b></span></div>`).join('') : '<div style="color:#8b98a3">কোনো ছুটির রেকর্ড নেই — পুরো সময় হোস্টেলে ছিল।</div>'}
@@ -13032,6 +13059,86 @@ function stayRenderKeepFocus(){
   stayRender();
   const el = document.getElementById('stay-search');
   if(el){ el.focus(); const n = el.value.length; try{ el.setSelectionRange(n,n); }catch(e){} }
+}
+
+
+// ───── PDF ডাউনলোড (html2canvas + jsPDF — প্রথম ব্যবহারে CDN থেকে লোড হয়; বাংলা ফন্ট ঠিক রাখতে পেজ ছবি করে PDF-এ বসানো হয়) ─────
+function stayLoadScript(url){
+  return new Promise((res,rej)=>{
+    const el=document.createElement('script'); el.src=url; el.onload=res; el.onerror=()=>rej(new Error('load '+url));
+    document.head.appendChild(el);
+  });
+}
+async function stayEnsurePdfLibs(){
+  if(!window.html2canvas) await stayLoadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+  if(!(window.jspdf && window.jspdf.jsPDF)) await stayLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+}
+function stayPdfPageHtml(rows, startIdx, pageNo, pages, exp){
+  const blkTxt = stayFilter.blk!=='all' ? ' • ব্লক '+stayFilter.blk : '';
+  const W = [28,128,40,32,44,36,50,50];
+  return `<div style="width:794px;height:1123px;box-sizing:border-box;padding:36px 34px 28px;background:#fff;color:#24313b;font-family:'Hind Siliguri',sans-serif;position:relative;overflow:hidden;">
+    <div style="text-align:center;border-bottom:2px solid #24313b;padding-bottom:8px;margin-bottom:10px;">
+      <div style="font-size:19px;font-weight:700;">হোস্টেল অবস্থান রিপোর্ট</div>
+      <div style="font-size:12px;margin-top:3px;color:#555;">${stayFmt(stayStartISO)} থেকে ${stayFmt(lvTodayISO())} — মোট ${bnDigits(exp)} দিন${blkTxt}</div>
+    </div>
+    <table style="border-collapse:collapse;width:100%;table-layout:fixed;font-size:11.5px;">
+      <colgroup>${W.map(w=>`<col style="width:${w}px">`).join('')}<col></colgroup>
+      <tr style="background:#eee;"><th style="${stayTd}">ক্র.</th><th style="${stayTd}">নাম</th><th style="${stayTd}">শ্রেণী</th><th style="${stayTd}">ব্লক</th><th style="${stayTd}">থাকার কথা</th><th style="${stayTd}">ছিল</th><th style="${stayTd}font-size:10px;">অনুমতি নিয়ে বাড়িতে</th><th style="${stayTd}font-size:10px;">অনুমতি ছাড়া বাড়িতে</th><th style="${stayTd}">অনুপস্থিতির তারিখ</th></tr>
+      ${rows.map((r,i)=>{ const t=stayDatesTxt(r); return `<tr><td style="${stayTd}">${bnDigits(startIdx+i+1)}</td><td style="${stayTd}text-align:left;">${escHtml(r.name)}</td><td style="${stayTd}">${CLASS_BN[r.cls]||r.cls}</td><td style="${stayTd}">${r.blk}</td><td style="${stayTd}">${bnDigits(r.expected)}</td><td style="${stayTd}">${bnDigits(r.stayed)}</td><td style="${stayTd}">${bnDigits(r.approved)}</td><td style="${stayTd}${r.unauth?'color:#c94545;font-weight:700;':''}">${bnDigits(r.unauth)}</td><td style="${stayTd}text-align:left;font-size:9.5px;line-height:1.35;">${t.a?escHtml(t.a):''}${t.u?`<div style="color:#c94545;">অনুমতিহীন: ${escHtml(t.u)}</div>`:''}${(!t.a&&!t.u)?'—':''}</td></tr>`; }).join('')}
+    </table>
+    <div style="position:absolute;left:34px;right:34px;bottom:14px;font-size:10px;color:#777;display:flex;justify-content:space-between;">
+      <span>প্রস্তুতের তারিখ: ${stayFmt(lvTodayISO())}</span><span>পৃষ্ঠা ${bnDigits(pageNo)} / ${bnDigits(pages)}</span>
+    </div>
+  </div>`;
+}
+// তারিখের লেখা কত লাইন নেবে তার আন্দাজে পাতা ভাগ — যাতে কোনো সারি কেটে না যায়
+function stayPdfChunks(rows){
+  const BUDGET = 820, CPL = 40, chunks = []; let cur = [], h = 0;
+  rows.forEach(r=>{
+    const t = stayDatesTxt(r);
+    const lines = Math.max(1, Math.ceil(t.a.length/CPL) + (t.u ? Math.ceil((t.u.length+12)/CPL) : 0));
+    const rh = 12 + lines*13;
+    if(cur.length && h+rh > BUDGET){ chunks.push(cur); cur=[]; h=0; }
+    cur.push(r); h += rh;
+  });
+  if(cur.length) chunks.push(cur);
+  return chunks;
+}
+const stayTd = 'border:1px solid #999;padding:5px 6px;text-align:center;';
+
+async function stayDownloadPdf(){
+  if(!stayCanView()) return;
+  if(!stayStartISO){ alert('আগে হিসাব শুরুর তারিখ সংরক্ষণ করুন।'); return; }
+  const btn = document.getElementById('stay-pdf-btn');
+  const setBtn = t => { if(btn){ btn.textContent=t; btn.disabled = (t!=='📄 PDF'); } };
+  setBtn('⏳ তৈরি হচ্ছে...');
+  try{
+    await stayEnsurePdfLibs();
+    if(document.fonts && document.fonts.ready) await document.fonts.ready;
+    let rows = stayRows.filter(r=> stayFilter.blk==='all' || r.blk===stayFilter.blk);
+    rows.sort((a,b)=> b.absent-a.absent || a.name.localeCompare(b.name));
+    if(!rows.length){ alert('রিপোর্টে কোনো ছাত্র নেই।'); setBtn('📄 PDF'); return; }
+    const exp = rows[0].expected, chunks = stayPdfChunks(rows), pages = chunks.length;
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({orientation:'p', unit:'mm', format:'a4'});
+    const holder = document.createElement('div');
+    holder.style.cssText = 'position:fixed;left:-10000px;top:0;z-index:-1;';
+    document.body.appendChild(holder);
+    try{
+      let done = 0;
+      for(let p=0; p<pages; p++){
+        holder.innerHTML = stayPdfPageHtml(chunks[p], done, p+1, pages, exp); done += chunks[p].length;
+        const canvas = await window.html2canvas(holder.firstElementChild, {scale:2, backgroundColor:'#ffffff', useCORS:true});
+        if(p>0) pdf.addPage();
+        pdf.addImage(canvas.toDataURL('image/jpeg',0.92), 'JPEG', 0, 0, 210, 297);
+      }
+    } finally { holder.remove(); }
+    pdf.save('hostel-stay-report-'+lvTodayISO()+'.pdf');
+  }catch(e){
+    console.error(e);
+    if(confirm('PDF তৈরি করা যায়নি (ইন্টারনেট সংযোগ লাগে)। প্রিন্ট উইন্ডো খুলে "Save as PDF" করবেন?')) stayPrint();
+  }
+  setBtn('📄 PDF');
 }
 
 function staySaveStart(){
@@ -13051,10 +13158,10 @@ function stayPrint(){
   const exp = rows.length ? rows[0].expected : 0;
   const w = window.open('', '_blank');
   if(!w){ alert('প্রিন্ট উইন্ডো খোলা যায়নি — ব্রাউজারের পপ-আপ অনুমতি দিন।'); return; }
-  w.document.write(`<html><head><meta charset="utf-8"><title>হোস্টেল অবস্থান রিপোর্ট</title><style>body{font-family:'Hind Siliguri',sans-serif;padding:16px}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #999;padding:5px 6px;text-align:center}td:nth-child(2){text-align:left}th{background:#eee}</style></head><body>
+  w.document.write(`<html><head><meta charset="utf-8"><title>হোস্টেল অবস্থান রিপোর্ট</title><style>body{font-family:'Hind Siliguri',sans-serif;padding:16px}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #999;padding:5px 6px;text-align:center}td:nth-child(2){text-align:left}tr{page-break-inside:avoid}th{background:#eee}</style></head><body>
     <h3>হোস্টেল অবস্থান রিপোর্ট</h3><div style="font-size:12px;margin-bottom:8px">${stayFmt(stayStartISO)} থেকে ${stayFmt(lvTodayISO())} — মোট ${bnDigits(exp)} দিন${stayFilter.blk!=='all'?' • ব্লক '+stayFilter.blk:''}</div>
-    <table><tr><th>ক্র.</th><th>নাম</th><th>শ্রেণী</th><th>ব্লক</th><th>থাকার কথা</th><th>ছিল</th><th>অনুমতি নিয়ে বাড়িতে</th><th>অনুমতি ছাড়া বাড়িতে</th></tr>
-    ${rows.map((r,i)=>`<tr><td>${bnDigits(i+1)}</td><td>${escHtml(r.name)}</td><td>${CLASS_BN[r.cls]||r.cls}</td><td>${r.blk}</td><td>${bnDigits(r.expected)}</td><td>${bnDigits(r.stayed)}</td><td>${bnDigits(r.approved)}</td><td>${bnDigits(r.unauth)}</td></tr>`).join('')}
+    <table><tr><th>ক্র.</th><th>নাম</th><th>শ্রেণী</th><th>ব্লক</th><th>থাকার কথা</th><th>ছিল</th><th>অনুমতি নিয়ে বাড়িতে</th><th>অনুমতি ছাড়া বাড়িতে</th><th>অনুপস্থিতির তারিখ</th></tr>
+    ${rows.map((r,i)=>`<tr><td>${bnDigits(i+1)}</td><td>${escHtml(r.name)}</td><td>${CLASS_BN[r.cls]||r.cls}</td><td>${r.blk}</td><td>${bnDigits(r.expected)}</td><td>${bnDigits(r.stayed)}</td><td>${bnDigits(r.approved)}</td><td>${bnDigits(r.unauth)}</td><td style="text-align:left;font-size:10px">${(()=>{const t=stayDatesTxt(r);return (t.a?escHtml(t.a):'')+(t.u?'<div style="color:#c94545">অনুমতিহীন: '+escHtml(t.u)+'</div>':'')||'—';})()}</td></tr>`).join('')}
     </table><script>window.onload=function(){window.print();}<\/script></body></html>`);
   w.document.close();
 }
