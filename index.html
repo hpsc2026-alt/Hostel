@@ -1291,9 +1291,13 @@ function effectiveUsers(role){
         <span class="role-icon">🏠</span>
         হাউজ টিউটর
       </div>
-      <div class="role-btn" onclick="selectRole('arabic')" id="role-arabic" style="grid-column:1 / -1;">
+      <div class="role-btn" onclick="selectRole('arabic')" id="role-arabic">
         <span class="role-icon">📖</span>
         আরবি শিক্ষক
+      </div>
+      <div class="role-btn" onclick="selectRole('dining')" id="role-dining">
+        <span class="role-icon">🍽️</span>
+        ডাইনিং ম্যানেজার
       </div>
     </div>
 
@@ -1436,6 +1440,7 @@ function effectiveUsers(role){
 
 <!-- রোল ব্যানার -->
 <div id="roleBanner"></div>
+<div id="stk-dash-widget"></div>
 
 <!-- ব্লক কার্ড -->
 <div class="section-header">🏠 ব্লক অনুযায়ী ছাত্র তালিকা</div>
@@ -4319,6 +4324,11 @@ function scShowReport(){
       </select>
     </div>
 
+    <div style="margin-bottom:12px;">
+      <label style="font-size:11px;font-weight:700;color:#a9822f;display:block;margin-bottom:6px;">🗓️ ভর্তির তারিখ</label>
+      <input id="stuAddDate" type="date" style="width:100%;padding:11px 12px;background:#faf8f2;border:1.5px solid #e2dbc7;border-radius:10px;color:#24313b;font-size:13px;outline:none;font-family:'Hind Siliguri',sans-serif;">
+    </div>
+
     <div id="stuAddBlockPreview" style="font-size:12px;color:#5c6f7a;background:#f7ecd6;border:1px solid #e6cf9e;border-radius:9px;padding:9px 12px;margin-bottom:16px;">
       এই ছাত্র স্বয়ংক্রিয়ভাবে <b>ব্লক A</b>-এ যুক্ত হবে
     </div>
@@ -4371,6 +4381,10 @@ const USERS = {
     {id:'super01', pass:INITIAL_PASSWORD, name:'আবু জাহিদ', title:'অ্যাডমিন অফিসার'}, // ⚠️ অভ্যন্তরীণ role-key 'super' এখন "অ্যাডমিন অফিসার" বোঝায় (পুরনো ডেটা/পাসওয়ার্ড অক্ষুণ্ণ রাখতে key বদলানো হয়নি)
   ],
   // নতুন হোস্টেল সুপার — ছুটি সংক্রান্ত কোনো ক্ষমতা নেই; নাম রাখা হয়নি, যাতে ব্যক্তি বদলালে কোড বদলাতে না হয়
+  // ডাইনিং ম্যানেজার — স্টক ম্যানেজমেন্টের এন্ট্রি দেন (নামহীন আইডি, ব্যক্তি বদলালে কোড বদলাতে হবে না)
+  dining: [
+    {id:'dining01', pass:INITIAL_PASSWORD, name:'ডাইনিং ম্যানেজার', title:'ডাইনিং ম্যানেজার'},
+  ],
   hsuper: [
     {id:'hsuper01', pass:INITIAL_PASSWORD, name:'হোস্টেল সুপার', title:'হোস্টেল সুপার'},
   ],
@@ -4392,12 +4406,13 @@ const ROLE_LABELS = {
   admin: 'সুপার অ্যাডমিন',
   super: 'অ্যাডমিন অফিসার',
   hsuper: 'হোস্টেল সুপার',
+  dining: 'ডাইনিং ম্যানেজার',
   asst:  'হাউজ টিউটর',
   arabic: 'আরবি শিক্ষক',
 };
 
 const ROLE_ICONS = {
-  admin:'👑', super:'🎖️', hsuper:'🏆', asst:'🏠', arabic:'📖',
+  admin:'👑', super:'🎖️', hsuper:'🏆', dining:'🍽️', asst:'🏠', arabic:'📖',
 };
 
 // পুরনো সেশনে সংরক্ষিত নাম/রোল-লেবেল নতুন নিয়মে হালনাগাদ (নাম এখন USERS থেকেই আসে)
@@ -4457,7 +4472,7 @@ async function doLogin(){
       const si = document.getElementById('successInline');
       si.classList.add('show');
 
-      const icons = {admin:'👑',super:'🎖️',hsuper:'🏆',asst:'🌙',arabic:'📖'};
+      const icons = {admin:'👑',super:'🎖️',hsuper:'🏆',dining:'🍽️',asst:'🌙',arabic:'📖'};
       document.getElementById('successIcon').textContent = icons[currentRole];
       document.getElementById('successTitle').textContent = 'আস-সালামু আলাইকুম, '+found.name+'!';
       document.getElementById('successSub').textContent =
@@ -4693,6 +4708,7 @@ const ROLE_CONFIG = {
       {icon:'🏠', label:'বাড়িতে আছে', val:'০', badge:'আগে ফিরলে ট্যাপ করুন', cls:'sc-amber', nav:'goEarlyReturn', id:'stat-home-count'},
     ],
     quickActions: [
+      {icon:'📦', label:'স্টক ম্যানেজমেন্ট', onclick:'goStock()'},
       {icon:'📆', label:'হোস্টেল অবস্থান রিপোর্ট', onclick:'goStayReport()'},
       {icon:'📊', label:'সম্পূর্ণ রিপোর্ট', onclick:'goReport()'},
       {icon:'🕐', label:'আজকের রুটিন প্রতিবেদন', onclick:'goRoutineFullReport()'},
@@ -4719,6 +4735,7 @@ const ROLE_CONFIG = {
       {icon:'🏠', label:'বাড়িতে আছে', val:'০', badge:'আগে ফিরলে ট্যাপ করুন', cls:'sc-amber', nav:'goEarlyReturn', id:'stat-home-count'},
     ],
     quickActions: [
+      {icon:'📦', label:'স্টক ম্যানেজমেন্ট', onclick:'goStock()'},
       {icon:'📆', label:'হোস্টেল অবস্থান রিপোর্ট', onclick:'goStayReport()'},
       {icon:'🏆', label:'আমার সারসংক্ষেপ', onclick:'goSuperSummary()'},
       {icon:'🕐', label:'আজকের রুটিন প্রতিবেদন', onclick:'goRoutineFullReport()'},
@@ -4733,6 +4750,14 @@ const ROLE_CONFIG = {
     ],
     showStaff: true,
   },
+  dining: {
+    banner: {cls:'rb-super', icon:'🍽️', label:'ডাইনিং ম্যানেজার', title:'ডাইনিং ম্যানেজার ড্যাশবোর্ড', desc:'ভাণ্ডার, ক্রয় ও দৈনিক খাদ্য-ব্যবহারের হিসাব।'},
+    stats: [],
+    quickActions: [
+      {icon:'📦', label:'স্টক ম্যানেজমেন্ট', onclick:'goStock()'},
+    ],
+    showStaff: false,
+  },
   hsuper: {
     banner: {cls:'rb-super', icon:'🏆', label:'হোস্টেল সুপার', title:'হোস্টেল সুপার ড্যাশবোর্ড', desc:'সামগ্রিক হোস্টেল পরিচালনা ও পর্যবেক্ষণ।'},
     stats: [
@@ -4743,6 +4768,7 @@ const ROLE_CONFIG = {
       {icon:'✅', label:'আজকের রুটিন', val:'—', badge:'চলমান', cls:'sc-teal', nav:'goRoutineFullReport', id:'stat-checklist'},
     ],
     quickActions: [
+      {icon:'📦', label:'স্টক ম্যানেজমেন্ট', onclick:'goStock()'},
       {icon:'🏆', label:'আমার সারসংক্ষেপ', onclick:'goSuperSummary()'},
       {icon:'🕐', label:'আজকের রুটিন প্রতিবেদন', onclick:'goRoutineFullReport()'},
       {icon:'🗒️', label:'রিপোর্ট দেওয়া বাকি আছে', onclick:'goReportPending()'},
@@ -5895,6 +5921,7 @@ function stuOpenAddModal(){
   if(!overlay) return;
   document.getElementById('stuAddName').value = '';
   document.getElementById('stuAddClass').value = 'IV';
+  { const dEl=document.getElementById('stuAddDate'); if(dEl){ const t=lvTodayISO(); dEl.value=t; dEl.max=t; } }
   stuAddUpdateBlockPreview();
   overlay.classList.remove('hide');
   overlay.style.display = 'flex';
@@ -5918,6 +5945,10 @@ function stuAddSubmit(){
   STUDENTS_BY_CLASS[cls].push(name);
   assignRooms();
   if(typeof fbSet==='function') fbSet('studentRoster', STUDENTS_BY_CLASS);
+  { // ভর্তির তারিখ সংরক্ষণ (হোস্টেল অবস্থান রিপোর্টের জন্য)
+    const dv = (document.getElementById('stuAddDate')||{}).value;
+    if(dv && dv <= lvTodayISO() && typeof fbSet==='function'){ const k=(String(cls)+'|'+name).replace(/[.#$\[\]\/]/g,'_'); if(typeof stayAdm!=='undefined') stayAdm[k]=dv; fbSet('studentAdmission/'+k, dv); }
+  }
   stuCloseAddModal();
   if(typeof render==='function') render();
   if(typeof renderDashBlockCards==='function') renderDashBlockCards();
@@ -12903,8 +12934,11 @@ function erMarkReturned(id){
 // হিসাব: থাকার কথা = হিসাব-শুরুর তারিখ থেকে আজ পর্যন্ত মোট দিন।
 // অনুপস্থিত = অনুমোদিত ছুটির দিন (হোস্টেল-বন্ধের দিনসহ) ∪ অনুমোদনহীন দিন (ফেরার তারিখের পর) — একই দিন দুবার গোনা হয় না।
 // স্বল্পমেয়াদি (ঘন্টাভিত্তিক) ছুটি দিনের হিসাবে ধরা হয় না — আলাদা ঘন্টায় দেখানো হয়।
-let stayStartISO = null, stayUnsub = null, stayFilter = {blk:'all', q:'', sort:'absent'}, stayRows = [], stayOpen = null;
+let stayAdm = {}, stayUnsub = null, stayUnsub2 = null; // stayAdm: ছাত্রভিত্তিক ভর্তির তারিখ (Firebase: studentAdmission)
+let stayStartISO = null, stayFilter = {blk:'all', q:'', sort:'absent'}, stayRows = [], stayOpen = null;
 
+function stayKey(cls,name){ return (String(cls)+'|'+String(name)).replace(/[.#$\[\]\/]/g,'_'); }
+function stayPeriodDays(){ const t=lvTodayISO(); return (stayStartISO && stayStartISO<=t) ? stayRange(stayStartISO,t).length : 0; }
 function stayCanView(){ const u=(typeof getSessionUser==='function')?getSessionUser():null; return !!u && (u.role==='admin' || u.role==='super'); }
 function stayAddDays(iso,n){ const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+n); return lvISO(d); }
 function stayRange(a,b){ const out=[]; if(!a||!b||a>b) return out; let c=a,g=0; while(c<=b && g<2000){ out.push(c); c=stayAddDays(c,1); g++; } return out; }
@@ -12937,8 +12971,11 @@ function stayDatesTxt(r){
 
 function goStayReport(){
   if(!stayCanView()){ alert('এই রিপোর্ট শুধুমাত্র সুপার অ্যাডমিন ও অ্যাডমিন অফিসার দেখতে পারবেন।'); return; }
-  if(!stayUnsub){
+  if(fbReady && !stayUnsub){
     stayUnsub = fbListen('settings/stayReportStart', v=>{ stayStartISO = (typeof v==='string') ? v : null; stayRender(); });
+  }
+  if(fbReady && !stayUnsub2){
+    stayUnsub2 = fbListen('studentAdmission', v=>{ stayAdm = (v && typeof v==='object') ? v : {}; stayRender(); });
   }
   showPage('stay-report');
   stayRender();
@@ -12946,8 +12983,6 @@ function goStayReport(){
 
 function stayCompute(){
   const today = lvTodayISO(), start = stayStartISO;
-  const expected = (start && start<=today) ? stayRange(start,today).length : 0;
-  const inWin = d => d>=start && d<=today;
   const by = {};
   (typeof lvRecords!=='undefined' ? lvRecords : []).forEach(r=>{
     let k = r.stuSerial;
@@ -12956,6 +12991,10 @@ function stayCompute(){
     (by[String(k)] = by[String(k)] || []).push(r);
   });
   return allStudents.map(s=>{
+    const adm = stayAdm[stayKey(s.cls,s.name)] || null;           // ভর্তির তারিখ (থাকলে)
+    const sStart = (adm && adm > start) ? adm : start;            // এই ছাত্রের হিসাব শুরু
+    const expected = (sStart<=today) ? stayRange(sStart,today).length : 0;
+    const inWin = d => d>=sStart && d<=today;
     const appr=new Set(), un=new Set(), clo=new Set(), items=[];
     let shortHrs=0;
     (by[String(s.serial)]||[]).forEach(r=>{
@@ -12979,7 +13018,7 @@ function stayCompute(){
     const approved = appr.size, unauth = un.size, absent = approved + unauth;
     const stayed = Math.max(0, expected - absent);
     items.sort((x,y)=> x.from<y.from?-1:1);
-    return {serial:s.serial, name:s.name, cls:s.cls, blk:s.block||s.blk, expected, stayed, approved, closure:clo.size, unauth, absent, shortHrs, items, apprR:stayMerge(appr), unR:stayMerge(un)};
+    return {serial:s.serial, name:s.name, cls:s.cls, blk:s.block||s.blk, expected, stayed, approved, closure:clo.size, unauth, absent, shortHrs, items, apprR:stayMerge(appr), unR:stayMerge(un), adm:(adm && adm>start)?adm:null};
   });
 }
 
@@ -13005,7 +13044,7 @@ function stayRender(){
 
   stayRows = stayCompute();
   const tot = stayRows.reduce((a,r)=>({appr:a.appr+r.approved, un:a.un+r.unauth}), {appr:0,un:0});
-  const expected = stayRows.length ? stayRows[0].expected : 0;
+  const expected = stayPeriodDays();
   if(sub) sub.textContent = stayFmt(stayStartISO)+' থেকে আজ — মোট '+bnDigits(expected)+' দিন';
 
   let rows = stayRows.filter(r=> (stayFilter.blk==='all' || r.blk===stayFilter.blk) && (!stayFilter.q || r.name.toLowerCase().includes(stayFilter.q.toLowerCase())));
@@ -13018,7 +13057,7 @@ function stayRender(){
   body.innerHTML = dateBox + `
     <div class="stay-sum">
       <div><b>${bnDigits(stayRows.length)}</b><span>মোট ছাত্র</span></div>
-      <div><b>${bnDigits(expected)}</b><span>থাকার কথা (দিন)</span></div>
+      <div><b>${bnDigits(expected)}</b><span>মোট সময়কাল (দিন)</span></div>
       <div><b style="color:#a9822f">${bnDigits(tot.appr)}</b><span>মোট অনুমোদিত ছুটি (ছাত্র-দিন)</span></div>
       <div><b style="color:#c94545">${bnDigits(tot.un)}</b><span>মোট অনুমতিহীন (ছাত্র-দিন)</span></div>
     </div>
@@ -13030,12 +13069,12 @@ function stayRender(){
       <button id="stay-pdf-btn" onclick="stayDownloadPdf()" style="padding:9px 12px;background:#24313b;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:12px;cursor:pointer;">📄 PDF</button>
     </div>` + (rows.length ? rows.map(r=>{
       const pct = r.expected ? Math.round(r.stayed*100/r.expected) : 0;
-      const col = pct>=90 ? ['#eaf7ee','#2f9e5c'] : pct>=75 ? ['#fdf3dc','#a9822f'] : ['#fbe4e4','#c94545'];
+      const col = !r.expected ? ['#f0f0f0','#8b98a3'] : pct>=90 ? ['#eaf7ee','#2f9e5c'] : pct>=75 ? ['#fdf3dc','#a9822f'] : ['#fbe4e4','#c94545'];
       const open = stayOpen===r.serial;
       return `<div class="stay-card">
         <div class="stay-hd" onclick="stayOpen=(stayOpen===${r.serial}?null:${r.serial});stayRender()">
-          <div><div class="stay-nm">${escHtml(r.name)}</div><div class="stay-meta">${CLASS_BN[r.cls]||r.cls} শ্রেণী • ব্লক ${r.blk}</div></div>
-          <div class="stay-pct" style="background:${col[0]};color:${col[1]}">${bnDigits(pct)}% ছিল</div>
+          <div><div class="stay-nm">${escHtml(r.name)}</div><div class="stay-meta">${CLASS_BN[r.cls]||r.cls} শ্রেণী • ব্লক ${r.blk}${r.adm?` • <b style="color:#a9822f">ভর্তি: ${stayShort(r.adm)}</b>`:''}</div></div>
+          <div class="stay-pct" style="background:${col[0]};color:${col[1]}">${r.expected ? bnDigits(pct)+'% ছিল' : '—'}</div>
         </div>
         <div class="stay-grid">
           <div class="stay-cell"><b>${bnDigits(r.expected)}</b><span>থাকার কথা</span></div>
@@ -13045,6 +13084,12 @@ function stayRender(){
         </div>
         ${r.absent ? (()=>{ const t=stayDatesTxt(r); return `<div style="padding:0 14px 10px;font-size:10.5px;line-height:1.6;color:#6b7a86;">📅 অনুপস্থিত: ${t.a?`<span>${t.a}</span>`:''}${t.a&&t.u?' • ':''}${t.u?`<span style="color:#c94545;font-weight:600;">🚫 ${t.u}</span>`:''}</div>`; })() : ''}
         ${open ? `<div class="stay-detail">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px;padding-bottom:8px;border-bottom:1px dashed #e2dbc7;">
+            <span style="font-weight:700;">🗓️ ভর্তির তারিখ:</span>
+            <input type="date" id="stay-adm-${r.serial}" value="${r.adm||''}" max="${today}" style="padding:6px;border:1.5px solid #e2dbc7;border-radius:8px;font-family:inherit;font-size:12px;">
+            <button onclick="staySaveAdm(${r.serial})" style="padding:6px 11px;background:#24313b;color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">সংরক্ষণ</button>
+            <span style="font-size:10px;color:#8b98a3;flex-basis:100%;">খালি রাখলে হিসাব-শুরুর তারিখ থেকেই ধরা হবে। এই তারিখের আগের দিনগুলো "থাকার কথা"-য় আসবে না।</span>
+          </div>
           <div style="font-weight:700;margin-bottom:6px;">মোট অনুপস্থিত: ${bnDigits(r.absent)} দিন${r.closure?` (এর মধ্যে হোস্টেল বন্ধ: ${bnDigits(r.closure)} দিন)`:''}${r.shortHrs?` • স্বল্পমেয়াদি ছুটি: ${bnDigits(r.shortHrs)} ঘন্টা`:''}</div>
           ${r.items.length ? r.items.map(it=>`<div class="stay-item"><span>${kind[it.k]}<br><span style="color:#8b98a3;font-size:10.5px">${escHtml(it.reason||'')}</span></span><span style="text-align:right">${it.from===it.to?stayFmt(it.from):stayFmt(it.from)+'<br>– '+stayFmt(it.to)}<br><b>${it.k==='short'?bnDigits(it.hours)+' ঘন্টা':bnDigits(it.days)+' দিন'}</b></span></div>`).join('') : '<div style="color:#8b98a3">কোনো ছুটির রেকর্ড নেই — পুরো সময় হোস্টেলে ছিল।</div>'}
         </div>` : ''}
@@ -13084,7 +13129,7 @@ function stayPdfPageHtml(rows, startIdx, pageNo, pages, exp){
     <table style="border-collapse:collapse;width:100%;table-layout:fixed;font-size:11.5px;">
       <colgroup>${W.map(w=>`<col style="width:${w}px">`).join('')}<col></colgroup>
       <tr style="background:#eee;"><th style="${stayTd}">ক্র.</th><th style="${stayTd}">নাম</th><th style="${stayTd}">শ্রেণী</th><th style="${stayTd}">ব্লক</th><th style="${stayTd}">থাকার কথা</th><th style="${stayTd}">ছিল</th><th style="${stayTd}font-size:10px;">অনুমতি নিয়ে বাড়িতে</th><th style="${stayTd}font-size:10px;">অনুমতি ছাড়া বাড়িতে</th><th style="${stayTd}">অনুপস্থিতির তারিখ</th></tr>
-      ${rows.map((r,i)=>{ const t=stayDatesTxt(r); return `<tr><td style="${stayTd}">${bnDigits(startIdx+i+1)}</td><td style="${stayTd}text-align:left;">${escHtml(r.name)}</td><td style="${stayTd}">${CLASS_BN[r.cls]||r.cls}</td><td style="${stayTd}">${r.blk}</td><td style="${stayTd}">${bnDigits(r.expected)}</td><td style="${stayTd}">${bnDigits(r.stayed)}</td><td style="${stayTd}">${bnDigits(r.approved)}</td><td style="${stayTd}${r.unauth?'color:#c94545;font-weight:700;':''}">${bnDigits(r.unauth)}</td><td style="${stayTd}text-align:left;font-size:9.5px;line-height:1.35;">${t.a?escHtml(t.a):''}${t.u?`<div style="color:#c94545;">অনুমতিহীন: ${escHtml(t.u)}</div>`:''}${(!t.a&&!t.u)?'—':''}</td></tr>`; }).join('')}
+      ${rows.map((r,i)=>{ const t=stayDatesTxt(r); return `<tr><td style="${stayTd}">${bnDigits(startIdx+i+1)}</td><td style="${stayTd}text-align:left;">${escHtml(r.name)}${r.adm?`<div style="font-size:9px;color:#a9822f;">ভর্তি: ${stayShort(r.adm)}</div>`:''}</td><td style="${stayTd}">${CLASS_BN[r.cls]||r.cls}</td><td style="${stayTd}">${r.blk}</td><td style="${stayTd}">${bnDigits(r.expected)}</td><td style="${stayTd}">${bnDigits(r.stayed)}</td><td style="${stayTd}">${bnDigits(r.approved)}</td><td style="${stayTd}${r.unauth?'color:#c94545;font-weight:700;':''}">${bnDigits(r.unauth)}</td><td style="${stayTd}text-align:left;font-size:9.5px;line-height:1.35;">${t.a?escHtml(t.a):''}${t.u?`<div style="color:#c94545;">অনুমতিহীন: ${escHtml(t.u)}</div>`:''}${(!t.a&&!t.u)?'—':''}</td></tr>`; }).join('')}
     </table>
     <div style="position:absolute;left:34px;right:34px;bottom:14px;font-size:10px;color:#777;display:flex;justify-content:space-between;">
       <span>প্রস্তুতের তারিখ: ${stayFmt(lvTodayISO())}</span><span>পৃষ্ঠা ${bnDigits(pageNo)} / ${bnDigits(pages)}</span>
@@ -13097,7 +13142,7 @@ function stayPdfChunks(rows){
   rows.forEach(r=>{
     const t = stayDatesTxt(r);
     const lines = Math.max(1, Math.ceil(t.a.length/CPL) + (t.u ? Math.ceil((t.u.length+12)/CPL) : 0));
-    const rh = 12 + lines*13;
+    const rh = 12 + Math.max(lines*13, r.adm?24:0);
     if(cur.length && h+rh > BUDGET){ chunks.push(cur); cur=[]; h=0; }
     cur.push(r); h += rh;
   });
@@ -13118,7 +13163,7 @@ async function stayDownloadPdf(){
     let rows = stayRows.filter(r=> stayFilter.blk==='all' || r.blk===stayFilter.blk);
     rows.sort((a,b)=> b.absent-a.absent || a.name.localeCompare(b.name));
     if(!rows.length){ alert('রিপোর্টে কোনো ছাত্র নেই।'); setBtn('📄 PDF'); return; }
-    const exp = rows[0].expected, chunks = stayPdfChunks(rows), pages = chunks.length;
+    const exp = stayPeriodDays(), chunks = stayPdfChunks(rows), pages = chunks.length;
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({orientation:'p', unit:'mm', format:'a4'});
     const holder = document.createElement('div');
@@ -13141,6 +13186,16 @@ async function stayDownloadPdf(){
   setBtn('📄 PDF');
 }
 
+function staySaveAdm(serial){
+  if(!stayCanView()) return;
+  const st = allStudents.find(x=>x.serial===serial); if(!st) return;
+  const v = (document.getElementById('stay-adm-'+serial)||{}).value || '';
+  if(v && v > lvTodayISO()){ alert('আজকের পরের তারিখ দেওয়া যাবে না'); return; }
+  const key = stayKey(st.cls, st.name);
+  if(v) stayAdm[key] = v; else delete stayAdm[key];
+  fbSet('studentAdmission/'+key, v || null);
+  stayRender();
+}
 function staySaveStart(){
   if(!stayCanView()) return;
   const v = (document.getElementById('stay-start-input')||{}).value;
@@ -13155,16 +13210,558 @@ function stayPrint(){
   if(!stayCanView()) return;
   let rows = stayRows.filter(r=> stayFilter.blk==='all' || r.blk===stayFilter.blk);
   rows.sort((a,b)=> b.absent-a.absent || a.name.localeCompare(b.name));
-  const exp = rows.length ? rows[0].expected : 0;
+  const exp = stayPeriodDays();
   const w = window.open('', '_blank');
   if(!w){ alert('প্রিন্ট উইন্ডো খোলা যায়নি — ব্রাউজারের পপ-আপ অনুমতি দিন।'); return; }
   w.document.write(`<html><head><meta charset="utf-8"><title>হোস্টেল অবস্থান রিপোর্ট</title><style>body{font-family:'Hind Siliguri',sans-serif;padding:16px}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #999;padding:5px 6px;text-align:center}td:nth-child(2){text-align:left}tr{page-break-inside:avoid}th{background:#eee}</style></head><body>
     <h3>হোস্টেল অবস্থান রিপোর্ট</h3><div style="font-size:12px;margin-bottom:8px">${stayFmt(stayStartISO)} থেকে ${stayFmt(lvTodayISO())} — মোট ${bnDigits(exp)} দিন${stayFilter.blk!=='all'?' • ব্লক '+stayFilter.blk:''}</div>
     <table><tr><th>ক্র.</th><th>নাম</th><th>শ্রেণী</th><th>ব্লক</th><th>থাকার কথা</th><th>ছিল</th><th>অনুমতি নিয়ে বাড়িতে</th><th>অনুমতি ছাড়া বাড়িতে</th><th>অনুপস্থিতির তারিখ</th></tr>
-    ${rows.map((r,i)=>`<tr><td>${bnDigits(i+1)}</td><td>${escHtml(r.name)}</td><td>${CLASS_BN[r.cls]||r.cls}</td><td>${r.blk}</td><td>${bnDigits(r.expected)}</td><td>${bnDigits(r.stayed)}</td><td>${bnDigits(r.approved)}</td><td>${bnDigits(r.unauth)}</td><td style="text-align:left;font-size:10px">${(()=>{const t=stayDatesTxt(r);return (t.a?escHtml(t.a):'')+(t.u?'<div style="color:#c94545">অনুমতিহীন: '+escHtml(t.u)+'</div>':'')||'—';})()}</td></tr>`).join('')}
+    ${rows.map((r,i)=>`<tr><td>${bnDigits(i+1)}</td><td>${escHtml(r.name)}${r.adm?'<div style="font-size:9px;color:#a9822f">ভর্তি: '+stayShort(r.adm)+'</div>':''}</td><td>${CLASS_BN[r.cls]||r.cls}</td><td>${r.blk}</td><td>${bnDigits(r.expected)}</td><td>${bnDigits(r.stayed)}</td><td>${bnDigits(r.approved)}</td><td>${bnDigits(r.unauth)}</td><td style="text-align:left;font-size:10px">${(()=>{const t=stayDatesTxt(r);return (t.a?escHtml(t.a):'')+(t.u?'<div style="color:#c94545">অনুমতিহীন: '+escHtml(t.u)+'</div>':'')||'—';})()}</td></tr>`).join('')}
     </table><script>window.onload=function(){window.print();}<\/script></body></html>`);
   w.document.close();
 }
+</script>
+
+<!-- ══ PAGE: স্টক ম্যানেজমেন্ট (অ্যাডমিন / অ্যাডমিন অফিসার = পূর্ণ; ডাইনিং ম্যানেজার = এন্ট্রি; হোস্টেল সুপার = শুধু দেখা) ══ -->
+<style>
+.stk-tabs{display:flex;gap:7px;overflow-x:auto;padding:10px 16px 6px;scrollbar-width:none;position:sticky;top:0;background:#faf8f2;z-index:5;}
+.stk-tabs::-webkit-scrollbar{display:none;}
+.stk-tab{flex:0 0 auto;padding:7px 14px;border-radius:20px;border:1.5px solid #e2dbc7;background:#fff;color:#5c6f7a;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+.stk-tab.on{background:#24313b;color:#fff;border-color:#24313b;}
+.stk-card{background:#fff;border:1px solid #e2dbc7;border-radius:13px;margin:0 16px 10px;padding:12px 14px;}
+.stk-h{font-size:12.5px;font-weight:700;color:#24313b;margin-bottom:8px;}
+.stk-sum{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 16px 10px;}
+.stk-sum>div{background:#fff;border:1px solid #e2dbc7;border-radius:12px;padding:9px 6px;text-align:center;}
+.stk-sum b{display:block;font-size:16px;color:#24313b;}
+.stk-sum span{font-size:10.5px;color:#8b98a3;}
+.stk-chips{display:flex;gap:6px;overflow-x:auto;padding:0 16px 8px;scrollbar-width:none;}
+.stk-chips::-webkit-scrollbar{display:none;}
+.stk-chip{flex:0 0 auto;font-size:11px;font-weight:600;border:1.5px solid #e2dbc7;border-radius:20px;padding:5px 11px;background:#fff;color:#34444f;cursor:pointer;}
+.stk-chip.on{background:#a9822f;color:#fff;border-color:#a9822f;}
+.stk-in{width:100%;box-sizing:border-box;padding:9px 10px;border:1.5px solid #e2dbc7;border-radius:10px;font-family:inherit;font-size:13px;background:#faf8f2;color:#24313b;outline:none;}
+.stk-in:focus{border-color:#a9822f;background:#fff;}
+.stk-lbl{font-size:10.5px;font-weight:700;color:#a9822f;display:block;margin:8px 0 4px;}
+.stk-2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.stk-btn{padding:10px 14px;background:#24313b;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit;}
+.stk-btn:disabled{opacity:.5;}
+.stk-btn2{padding:9px 12px;background:#fff;color:#24313b;border:1.5px solid #e2dbc7;border-radius:10px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit;}
+.stk-btng{background:#2f9e5c;}
+.stk-row{background:#fff;border:1px solid #e2dbc7;border-radius:12px;margin:0 16px 8px;overflow:hidden;}
+.stk-rh{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px 6px;cursor:pointer;}
+.stk-nm{font-size:13px;font-weight:700;color:#24313b;}
+.stk-sub{font-size:10.5px;color:#8b98a3;margin-top:1px;}
+.stk-low{color:#c94545;font-weight:700;}
+.stk-g{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;padding:0 12px 10px;}
+.stk-c{background:#faf8f2;border:1px solid #e2dbc7;border-radius:9px;padding:5px 2px;text-align:center;}
+.stk-c b{display:block;font-size:13px;color:#24313b;}
+.stk-c span{font-size:9.5px;color:#8b98a3;}
+.stk-ed{border-top:1px solid #e2dbc7;background:#faf8f2;padding:10px 12px;}
+.stk-meals{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;}
+.stk-meals label{font-size:10px;color:#8b98a3;text-align:center;font-weight:600;}
+.stk-meals input{width:100%;box-sizing:border-box;padding:8px 2px;text-align:center;border:1.5px solid #e2dbc7;border-radius:8px;font-family:inherit;font-size:13px;background:#fff;margin-top:3px;}
+.stk-eb{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap;}
+.stk-info{font-size:10.5px;color:#6b7a86;margin-top:8px;line-height:1.6;}
+.stk-cat{font-size:11.5px;font-weight:700;color:#a9822f;padding:8px 18px 5px;}
+.stk-warn{margin:0 16px 10px;padding:9px 12px;border-radius:11px;background:#fdf3dc;border:1px solid #e6cf9e;font-size:11.5px;color:#7a5b14;}
+.stk-bad{background:#fbe4e4;border-color:#efb5b5;color:#9b2c2c;}
+.stk-li{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px dashed #e2dbc7;font-size:12px;color:#34444f;}
+.stk-li:last-child{border-bottom:none;}
+.stk-bars{display:flex;align-items:flex-end;gap:3px;height:80px;margin-top:6px;}
+.stk-bars div{flex:1;background:#a9822f;border-radius:3px 3px 0 0;min-width:4px;}
+.stk-nav{display:flex;align-items:center;gap:6px;margin:4px 16px 10px;}
+.stk-nav .stk-in{text-align:center;font-weight:700;}
+</style>
+<div id="page-stock" class="page" style="background:#faf8f2;min-height:100vh;padding-bottom:60px;">
+  <div class="topbar">
+    <div class="tb-back" onclick="goDashboard()">←</div>
+    <div class="tb-info"><div class="tb-title">📦 স্টক ম্যানেজমেন্ট</div><div class="tb-sub" id="stk-sub">লোড হচ্ছে...</div></div>
+  </div>
+  <div id="stk-tabs" class="stk-tabs"></div>
+  <div id="stk-body"></div>
+</div>
+
+<script>
+const STK_SEED_DATE='2026-10-05';
+const STK_SEED_ITEMS=[[1,"চাল","কেজি","food"],[2,"পোলার চাল","কেজি","food"],[3,"মুসুরি ডাল","কেজি","food"],[4,"মুগ ডাল","কেজি","food"],[5,"সরিষার তেল","কেজি","food"],[6,"ছোলা","কেজি","food"],[7,"আস্তা ডাবরি","কেজি","food"],[8,"চাউলের গুড়া","কেজি","food"],[9,"সয়াবিন তেল","লিটার","food"],[10,"লবন","কেজি","food"],[11,"জয়ফল","পিস","food"],[12,"জয়ত্রী","গ্রাম","food"],[13,"কিসমিস","গ্রাম","food"],[14,"কাজু বাদাম","গ্রাম","food"],[15,"কাঠ বাদাম","গ্রাম","food"],[16,"বিরিয়ানি মসলা","প্যাকেট","food"],[17,"রোস্ট মসলা","প্যাকেট","food"],[18,"মাংসের মসলা","প্যাকেট","food"],[19,"চটপটি/হালিম মসলা","প্যাকেট","food"],[20,"কালাভুনা মশলা","প্যাকেট","food"],[21,"নুডুলস","প্যাকেট","food"],[22,"পাস্তা","প্যাকেট","food"],[23,"লাচ্ছা সেমাই","প্যাকেট","food"],[24,"চিনি","কেজি","food"],[25,"বেসন","কেজি","food"],[26,"ময়দা","কেজি","food"],[27,"সুজি","কেজি","food"],[28,"ফুসকা","কেজি","food"],[29,"মুড়ি","কেজি","food"],[30,"চানাচুর","কেজি","food"],[31,"কর্নফ্লাওয়ার","কেজি","food"],[32,"বেকিং পাউডার","প্যাকেট","food"],[33,"চা পাতা","গ্রাম","food"],[34,"হলুদ গুড়া","গ্রাম","food"],[35,"ধনিয়ার গুড়া","গ্রাম","food"],[36,"জিরা","গ্রাম","food"],[37,"শাহিজিরা","গ্রাম","food"],[38,"দারচিনি","গ্রাম","food"],[39,"লবঙ্গ","গ্রাম","food"],[40,"এলাচ/শাহী এলাচ","গ্রাম","food"],[41,"তেজপাতা","গ্রাম","food"],[42,"টমেটো সস","লিটার","food"],[43,"ম্যাগি মশলা","প্যাকেট","food"],[44,"তেঁতুল","গ্রাম","food"],[45,"পটেটো বিস্কুট","প্যাকেট","food"],[46,"আঁচার","কেজি","food"],[47,"নিমকি","গ্রাম","food"],[48,"খাবার সোডা","গ্রাম","food"],[49,"গোল মরিচ","গ্রাম","food"],[50,"শুকনা মরিচ গুড়া","গ্রাম","food"],[51,"ডিম সাবান","পিস","clean"],[52,"বল সাবান","পিস","clean"],[53,"টয়লেট সাবান","পিস","clean"],[54,"হ্যান্ড ওয়াশ","পিস","clean"],[55,"বক্স টিস্যু","পিস","clean"],[56,"ন্যাপকিন টিস্যু","পিস","clean"],[57,"টয়লেট টিস্যু","পিস","clean"],[58,"হারপিক","পিস","clean"],[59,"ফিনাইল","পিস","clean"],[60,"গ্লাস ক্লিনার","পিস","clean"],[61,"টাইলস ক্লিনার","গ্রাম","clean"],[62,"হুইল পাউডার","কেজি","clean"],[63,"পলিথিন","কেজি","clean"],[64,"বরিক পাউডার","গ্রাম","clean"],[65,"আলু","কেজি","veg"],[66,"পেয়াজ","কেজি","veg"],[67,"রসুন","কেজি","veg"],[68,"আদা","কেজি","veg"],[69,"কাঁচা মরিচ","কেজি","veg"],[70,"মিষ্টি কুমড়া","কেজি","veg"],[71,"বরবটি","মোঠা","veg"],[72,"কলমি শাক","কেজি","veg"],[73,"পাতা কপি","কেজি","veg"],[74,"উস্তা","কেজি","veg"],[75,"কাঁচা কলা","পিস","veg"],[76,"লাউ","পিস","veg"],[77,"ভেন্ডি","কেজি","veg"],[78,"পটল","কেজি","veg"],[79,"শসা","কেজি","veg"],[80,"আম","কেজি","veg"],[81,"ফুল কপি/ওল কপি","কেজি","veg"],[82,"পালং শাক","মোঠা","veg"],[83,"লাল শাক","মোঠা","veg"],[84,"শাক","মোঠা","veg"],[85,"কচু","মোঠা","veg"],[86,"কচু শাক","মোঠা","veg"],[87,"পুই শাক","মোঠা","veg"],[88,"সিম","কেজি","veg"],[89,"পেঁপে","কেজি","veg"],[90,"ইলিশ মাছ","পিস","meat"],[91,"পাঙ্গাস মাছ","পিস","meat"],[92,"রুই মাছ","পিস","meat"],[93,"বাটা মাছ","কেজি","meat"],[94,"চিংড়ি মাছ","কেজি","meat"],[95,"কৈ মাছ","পিস","meat"],[96,"তেলাপিয়া মাছ","পিস","meat"],[97,"কাকচি মাছ","কেজি","meat"],[98,"পাবদা মাছ","পিস","meat"],[99,"সোনালি মুরগি","পিস","meat"],[100,"ব্রয়লার মুরগি","কেজি","meat"],[101,"গরুর মাংস","কেজি","meat"],[102,"ডিম","পিস","meat"],[103,"সিঙ্গারা","পিস","food"],[104,"গাজর","কেজি","veg"],[105,"পাটখড়ি","পিস","stat"],[106,"কেক","পিস","food"],[107,"পেঁয়াজের কলি","মোঠা","veg"],[108,"ডিআইবি সার","কেজি","stat"],[109,"মিষ্টি দই","পিস","meat"],[110,"দুধ","কেজি","meat"],[111,"কাঁচা টমেটো","কেজি","veg"],[112,"কসটেপ","পিস","stat"],[113,"পেয়ারা","কেজি","veg"],[114,"টক দই","গ্রাম","meat"],[115,"বাটার বন","পিস","food"],[116,"চিচিঙ্গা","কেজি","veg"],[117,"সাদা সরিষা","গ্রাম","food"],[118,"চিনা বাদাম","গ্রাম","food"],[119,"টেস্টি সল্ট","প্যাকেট","food"],[120,"কাবাব মসলা","গ্রাম","food"],[121,"ঘি","গ্রাম","food"],[122,"ডিজেল তেল","লিটার","stat"],[123,"মিষ্টি","পিস","food"],[124,"রুটি","পিস","food"],[125,"পাকা টমেটো","কেজি","veg"],[126,"পাকা কলা","পিস","veg"],[127,"কেওরাজল","পিস","food"],[128,"আঙ্গুর","গ্রাম","veg"],[129,"আপেল","গ্রাম","veg"],[130,"কমলা","গ্রাম","veg"],[131,"গোলাপজল","পিস","food"],[132,"আলুবোখারা","গ্রাম","food"],[133,"গুড়া দুধ","গ্রাম","meat"],[134,"মাওয়া","গ্রাম","meat"],[135,"পোস্ত দানা","গ্রাম","food"],[136,"বিস্কুট","প্যাকেট","food"],[137,"স্টার মসলা","গ্রাম","food"],[138,"গুড়","কেজি","food"],[139,"খেজুর","কেজি","veg"],[140,"লেবু","পিস","veg"],[141,"ছোলাভুনা","কেজি","food"],[142,"বরই","কেজি","veg"],[143,"বিলিচিং পাউডার","কেজি","clean"],[144,"বেগুন","কেজি","veg"],[145,"রুহ আফজা","কেজি","food"],[146,"চিড়া","কেজি","food"],[147,"তরমুজ","পিস","veg"],[148,"ধুন্দল","কেজি","veg"],[149,"লিচু","পিস","veg"],[150,"আইস-ক্রিম","পিস","food"],[151,"মশার কয়েল","প্যাকেট","clean"],[152,"ওর স্যালাইন","প্যাকেট","clean"],[153,"চাল কুমড়া","পিস","veg"],[201,"খাতা","ডজন","stat"],[202,"কালো কলম","ডজন","stat"],[203,"A4 কাগজ","বান্ডিল","stat"],[204,"A4 রঙিণ কাগজ","বান্ডিল","stat"],[205,"পেন্সিল কাটার","পিস","stat"],[206,"বিলিসিন পাওডার","কেজি","clean"],[207,"নোটিস বোর্ড","পিস","stat"],[208,"সেন্ট","পিস","stat"],[209,"মার্কিন কাপড়","গজ","stat"],[210,"গামছা","পিস","stat"],[211,"তালা","পিস","stat"],[212,"ঝাড়ু","পিস","clean"],[213,"বড় ঝাকা","পিস","stat"],[214,"ওয়ান টাইম বাটি","পিস","stat"],[215,"সিমেন্ট-এর চুলা","পিস","stat"],[216,"সাঝ","পিস","stat"],[217,"সিলিপ পেপার","বক্স","stat"],[218,"পেনসিল ব্যাটারি","পিস","stat"],[219,"ভাত রাখার নেট","পিস","stat"],[220,"ছোট ব্যালচা","পিস","stat"],[221,"ছোট টুলস","পিস","stat"],[222,"খড়ি","মন","stat"],[223,"কামোট পুশ","কেজি","clean"],[224,"আরএফএল গামলা","পিস","stat"],[225,"পলিথিন","গ্রাম","stat"],[226,"হাত ব্রাশ","কেজি","clean"],[227,"স্টিল জালি","পিস","stat"],[228,"কাচের গ্লাস","পিস","stat"],[229,"স্টিল বাটি","পিস","stat"],[230,"প্লাস্টিক ঝালি (বড়)","পিস","stat"],[231,"প্লাস্টিক ঝালি (ছোট)","পিস","stat"],[232,"ভাতের চামচ","পিস","stat"],[233,"ডালের চামচ","পিস","stat"],[234,"ম্যারকো চামচ","পিস","stat"],[235,"ছোট চামচ","পিস","stat"],[236,"ফোম","পিস","stat"],[237,"বালটি","পিস","stat"],[238,"ভিকসল","পিস","stat"],[239,"কসটেপ","পিস","stat"],[240,"টেস্টার","পিস","stat"],[241,"চকের গুড়া","কেজি","stat"],[242,"মুছনি (লাঠি)","পিস","clean"],[243,"মারকার পেন","ডজন","stat"],[244,"পরিষ্কার খাতা","রিম","stat"],[245,"পাম্পার","টি","clean"],[246,"পাপোষ","টি","clean"],[247,"প্লাস্টিকের ঝাড়ু","টি","clean"],[248,"প্লাস্টিকের ঝুড়ি","টি","stat"],[249,"ডিআর বল","টি","stat"]];
+const STK_SEED_OPEN={"1":198,"2":9.8,"3":18.5,"4":7.7,"5":25,"6":1.8,"7":36,"9":6,"10":21,"11":4,"12":100,"13":200,"14":150,"15":80,"16":6,"18":8,"19":1,"21":2,"24":7.49,"25":2,"26":1,"27":1.5,"32":1,"33":1600,"34":1500,"35":470,"36":650,"38":100,"39":80,"40":30,"41":690,"43":20,"51":3,"53":28,"54":2,"57":5,"58":2,"59":2,"60":2,"62":1.5,"65":40,"66":26,"67":8.5,"68":3.3,"69":2.5,"70":16.05,"76":2,"78":5,"79":10,"89":15.42,"93":50,"100":0.1,"102":222,"110":20,"140":20};
+const STK_SEED_BUY={"20":3,"24":5,"26":4,"27":3,"62":1,"69":5,"99":120,"100":18,"102":660,"110":10,"115":125,"136":144,"153":7};
+const STK_SEED_USE={"1":[10,11,10,0,0],"3":[2.5,1.5,2.5,0,0],"5":[5,0,0,0,0],"9":[0,0,0,0,0.5],"10":[2,0,0,0,0],"24":[0,2.5,0,0.5,0],"26":[0,4,0,0,0],"27":[0,3,0,0,0],"33":[0,100,0,0,0],"34":[250,0,0,0,0],"38":[100,0,0,0,0],"39":[30,25,0,0,0],"40":[0,20,0,0,0],"51":[0,0,0,1,0],"53":[0,0,0,1,0],"62":[0,0.5,0,0,0],"65":[0,3,0,0,0],"66":[6,0,0,0,0],"67":[1,0,0,0,0],"68":[1,0.25,0,0,0],"69":[2.5,2.5,0,0,0],"79":[4,0,2,0,0],"89":[1.8,0,0,0,0],"99":[0,120,0,0,0],"100":[0,18,0,0,0],"110":[0,0,0,0,10],"115":[0,0,0,125,0]};
+
+// ═══════════════ স্টক ম্যানেজমেন্ট ═══════════════
+// Firebase পথ: stockItems (আইটেম মাস্টার), stockDays/{তারিখ} (ক্রয় buy · ব্যবহার use · সমন্বয় adj · ছাত্রসংখ্যা stu),
+//              stockSettings (শুরুর তারিখ ও প্রারম্ভিক মজুদ), stockLog (অডিট লগ)
+// হিসাব: অবশিষ্ট = প্রারম্ভিক + ক্রয় − ব্যবহার ± সমন্বয়; মূল্যায়ন = ভারযুক্ত গড় দাম (Weighted Average Cost)।
+const STK_MEALS=[['b','সকাল'],['l','দুপুর'],['d','রাত'],['t','টিফিন'],['s','নাস্তা']];
+const STK_CATS={food:'খাদ্য ও মুদি',veg:'সবজি ও ফল',meat:'মাছ-মাংস-ডিম-দুধ',clean:'পরিষ্কার ও স্বাস্থ্যসামগ্রী',stat:'স্টেশনারি ও সরঞ্জাম'};
+const STK_RATION={food:1,veg:1,meat:1};            // খাদ্যখরচে ধরা হবে
+const STK_EDIT_DAYS=1;                              // ডাইনিং ম্যানেজার আজ ও গতকাল সম্পাদনা করতে পারবেন
+const STK_LEAD=3;                                   // প্রস্তাবিত ন্যূনতম মজুদ = গড় দৈনিক ব্যবহার × ৩ দিন
+const STK_ADJ={waste:['অপচয়/নষ্ট',-1],lost:['হারানো/ঘাটতি',-1],ret:['ফেরত দেওয়া',-1],count:['গণনায় সংশোধন',0],gain:['অতিরিক্ত প্রাপ্তি/দান',1],open:['প্রারম্ভিক জমা',1]};
+let STK={items:{},days:{},set:null,log:{},tab:'sheet',date:null,cat:'all',q:'',all:false,open:null,edit:null,_L:null,started:false,tries:0,loaded:{},pm:null,pq:'',rm:null,pf:{},offline:false,_pend:false};
+
+const stkR=x=>Math.round((+x||0)*10000)/10000;
+const stkN=x=>bnDigits(String(Math.round((+x||0)*100)/100));
+const stkM=x=>'৳'+bnDigits(Math.round(+x||0).toLocaleString('en-US'));
+const stkE=s=>escHtml(String(s==null?'':s));
+function stkUser(){ try{ return getSessionUser()||{}; }catch(e){ return {}; } }
+function stkLevel(){ const r=stkUser().role; return (r==='admin'||r==='super')?'full':(r==='dining')?'entry':(r==='hsuper')?'view':null; }
+function stkMoney(){ return stkLevel()==='full'||stkLevel()==='entry'; }
+function stkCanEdit(d){
+  const lv=stkLevel(), od=(STK.set||{}).openDate, t=lvTodayISO(); if(!od||d<od||d>t) return false;
+  if(lv==='full') return true;
+  if(lv==='entry') return d>=stayAddDays(t,-STK_EDIT_DAYS);
+  return false;
+}
+function stkPut(path,val){ if(typeof fbReady!=='undefined'&&fbReady) fbSet(path,val); else STK.offline=true; }
+function stkLog(act,detail){ try{ if(typeof fbReady!=='undefined'&&fbReady){ const u=stkUser(); fbPush('stockLog',{at:Date.now(),by:(u.roleLabel||u.role||'')+' ('+(u.id||'')+')',act,d:detail}); } }catch(e){} }
+function stkId(p){ return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5); }
+
+// ───── সূচনা ও সিঙ্ক ─────
+function stkBuildSeed(){
+  const items={},open={},day={buy:{},use:{}};
+  STK_SEED_ITEMS.forEach(([no,name,unit,cat])=>{ items['i'+no]={no,name,unit,cat,min:0,par:0,rate:0,on:1}; if(STK_SEED_OPEN[no]) open['i'+no]=STK_SEED_OPEN[no]; });
+  Object.entries(STK_SEED_BUY).forEach(([no,q])=>{ day.buy['s'+no]={item:'i'+no,qty:q,amt:0,sup:'',bill:'',note:'৫ অক্টোবরের শিট থেকে',by:'সিস্টেম',at:0}; });
+  Object.entries(STK_SEED_USE).forEach(([no,a])=>{ const o={}; STK_MEALS.forEach((m,i)=>{ if(a[i]) o[m[0]]=a[i]; }); day.use['i'+no]=o; });
+  return {items,set:{openDate:STK_SEED_DATE,open},date:STK_SEED_DATE,day};
+}
+function stkApplySeed(){ const sd=stkBuildSeed(); STK.items=sd.items; STK.set=sd.set; STK.days[sd.date]=sd.day; STK._L=null; return sd; }
+function stkMaybeSeed(){
+  if(STK.set) return; const lv=stkLevel(); if(lv!=='full'&&lv!=='entry') return;
+  const sd=stkApplySeed();
+  stkPut('stockItems',sd.items); stkPut('stockDays/'+sd.date,sd.day); stkPut('stockSettings',sd.set);
+  stkLog('seed','প্রাথমিক আইটেম তালিকা ও ৫ অক্টোবরের শিট লোড'); stkDirty();
+}
+function stkStart(){
+  if(STK.started) return;
+  if(typeof fbReady==='undefined'||!fbReady){
+    if(STK.tries++<6){ setTimeout(stkStart,900); return; }
+    STK.started=true; STK.offline=true; if(stkLevel()==='full'||stkLevel()==='entry') stkApplySeed(); stkDirty(); return;
+  }
+  STK.started=true;
+  const mark=k=>{ STK.loaded[k]=1; if(STK.loaded.items&&STK.loaded.days&&STK.loaded.set) stkMaybeSeed(); };
+  fbListen('stockItems',v=>{ STK.items=v||{}; mark('items'); stkDirty(); });
+  fbListen('stockDays',v=>{ STK.days=v||{}; mark('days'); stkDirty(); });
+  fbListen('stockSettings',v=>{ STK.set=(v&&v.openDate)?v:null; mark('set'); stkDirty(); });
+  fbListen('stockLog',v=>{ STK.log=v||{}; if(STK.tab==='report') stkDirty(); });
+}
+function stkDirty(){
+  STK._L=null;
+  const pg=document.getElementById('page-stock');
+  if(pg&&pg.classList.contains('active')){
+    const a=document.activeElement;
+    if(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName)&&pg.contains(a)){ STK._pend=true; }
+    else stkRender();
+  }
+  stkRenderDashWidget();
+}
+
+// ───── খতিয়ান (ledger) ─────
+function stkLedger(){
+  if(STK._L) return STK._L;
+  const set=STK.set||{}, od=set.openDate, L={dates:[],day:{},final:{}};
+  if(!od){ STK._L=L; return L; }
+  let last=lvTodayISO(); Object.keys(STK.days).forEach(d=>{ if(d>last) last=d; });
+  L.dates=stayRange(od,last);
+  const ids=Object.keys(STK.items), st={};
+  ids.forEach(id=>{ const q=stkR((set.open||{})[id]||0), r=+STK.items[id].rate||0; st[id]={q,v:q*r,r}; });
+  L.dates.forEach(d=>{
+    const doc=STK.days[d]||{}, rec={}, bm={}, am={};
+    let buyAmt=0,foodCost=0,otherCost=0,adjLoss=0;
+    Object.values(doc.buy||{}).forEach(p=>{ (bm[p.item]=bm[p.item]||[]).push(p); });
+    Object.values(doc.adj||{}).forEach(a=>{ (am[a.item]=am[a.item]||[]).push(a); });
+    ids.forEach(id=>{
+      const s=st[id], o=s.q; let bq=0,bamt=0,aq=0,acost=0;
+      (bm[id]||[]).forEach(p=>{ const q=+p.qty||0,a=+p.amt||0; s.q+=q; s.v+=a; bq+=q; bamt+=a; if(q>0&&a>0) s.r=a/q; });
+      const u=(doc.use||{})[id]||{}, mu=STK_MEALS.map(m=>+u[m[0]]||0), ut=mu.reduce((a,b)=>a+b,0);
+      const avg=s.q>0?s.v/s.q:s.r, uc=ut*avg; s.q-=ut; s.v-=uc;
+      (am[id]||[]).forEach(a=>{ const q=+a.qty||0, av=s.q>0?s.v/s.q:s.r; if(q<0){ const c=-q*av; s.v-=c; acost+=c; } else s.v+=q*av; s.q+=q; aq+=q; });
+      if(s.q<=1e-9) s.v=0;
+      rec[id]={o:stkR(o),bq:stkR(bq),bamt,mu,ut:stkR(ut),uc,aq:stkR(aq),ac:acost,c:stkR(s.q)};
+      buyAmt+=bamt; if((STK.items[id].cat in STK_RATION)) foodCost+=uc; else otherCost+=uc; adjLoss+=acost;
+    });
+    const entered=!!(Object.keys(doc.buy||{}).length||Object.keys(doc.use||{}).length||Object.keys(doc.adj||{}).length||doc.stu);
+    L.day[d]={rec,buyAmt,foodCost,otherCost,adjLoss,entered};
+  });
+  ids.forEach(id=>{ L.final[id]={q:stkR(st[id].q),v:st[id].v,r:st[id].r}; });
+  STK._L=L; return L;
+}
+// পরিবর্তন প্রয়োগ করে দেখা: কোনো দিনে মজুদ ঋণাত্মক হলে বাতিল
+function stkTry(date,itemId,mut){
+  const before=JSON.stringify(STK.days[date]||null);
+  if(!STK.days[date]) STK.days[date]={};
+  mut(STK.days[date]); STK._L=null;
+  const L=stkLedger(); let bad=null;
+  for(const d of L.dates){ const r=L.day[d].rec[itemId]; if(r&&r.c<-1e-6){ bad=d; break; } }
+  if(bad){ const old=JSON.parse(before); if(old===null) delete STK.days[date]; else STK.days[date]=old; STK._L=null; }
+  return bad;
+}
+function stkStuGuess(d){
+  let t=(typeof allStudents!=='undefined')?allStudents.length:0, away=new Set();
+  if(typeof lvRecords!=='undefined') lvRecords.forEach(r=>{ if(!r.isShortLeave&&r.fromISO<=d&&d<=r.toISO) away.add(String(r.stuSerial!=null?r.stuSerial:r.stuName)); });
+  return Math.max(0,t-away.size);
+}
+function stkStu(d){ const s=(STK.days[d]||{}).stu; return s?{n:+s,est:false}:{n:stkStuGuess(d),est:true}; }
+function stkIds(includeOff){
+  const ord=Object.keys(STK_CATS);
+  return Object.keys(STK.items).filter(id=>includeOff||STK.items[id].on!==0).sort((a,b)=>{
+    const x=STK.items[a],y=STK.items[b]; return (ord.indexOf(x.cat)-ord.indexOf(y.cat))||((x.no||0)-(y.no||0))||x.name.localeCompare(y.name);
+  });
+}
+function stkAvgUse(id){            // গত ১৪ দিনের গড় দৈনিক ব্যবহার (যে দিনগুলোর এন্ট্রি আছে)
+  const L=stkLedger(), t=lvTodayISO(), from=stayAddDays(t,-13); let sum=0,n=0;
+  L.dates.forEach(d=>{ if(d>=from&&d<=t&&L.day[d].entered){ n++; sum+=L.day[d].rec[id]?L.day[d].rec[id].ut:0; } });
+  return n?sum/n:null;
+}
+
+// ───── প্রবেশ ও পেজ ─────
+function goStock(){
+  if(!stkLevel()){ alert('এই অংশে প্রবেশের অনুমতি নেই।'); return; }
+  stkStart();
+  if(!STK.date) STK.date=lvTodayISO();
+  if(stkLevel()==='view'&&STK.tab!=='sheet'&&STK.tab!=='report') STK.tab='sheet';
+  showPage('stock'); stkRender();
+}
+function stkTabsList(){ return stkLevel()==='view'?[['sheet','📋 শিট'],['report','📊 রিপোর্ট']]:[['sheet','📋 শিট'],['buy','🛒 ক্রয়'],['adj','⚖️ যাচাই'],['report','📊 রিপোর্ট'],['items','🧾 আইটেম']]; }
+function stkTab(t){ STK.tab=t; STK.open=null; STK.edit=null; stkRender(); window.scrollTo(0,0); }
+function stkRender(){
+  const body=document.getElementById('stk-body'); if(!body) return;
+  STK._pend=false;
+  document.getElementById('stk-tabs').innerHTML=stkTabsList().map(t=>`<button class="stk-tab ${STK.tab===t[0]?'on':''}" onclick="stkTab('${t[0]}')">${t[1]}</button>`).join('');
+  const lv=stkLevel(), sub=document.getElementById('stk-sub');
+  if(sub) sub.textContent=(lv==='full'?'পূর্ণ নিয়ন্ত্রণ':lv==='entry'?'এন্ট্রি ও ব্যবস্থাপনা':'শুধু দেখা')+(STK.offline?' • ⚠️ অফলাইন':'');
+  if(!STK.set){ body.innerHTML=`<div class="stk-warn">${(lv==='full'||lv==='entry')?'⏳ স্টক চালু হচ্ছে...':'স্টক ম্যানেজমেন্ট এখনও চালু করা হয়নি। অ্যাডমিন অফিসার বা ডাইনিং ম্যানেজার একবার খুললেই চালু হবে।'}</div>`; return; }
+  body.innerHTML=({sheet:stkSheetHtml,buy:stkBuyHtml,adj:stkAdjHtml,report:stkReportHtml,items:stkItemsHtml}[STK.tab]||stkSheetHtml)();
+}
+document.addEventListener('focusout',e=>{ setTimeout(()=>{ const pg=document.getElementById('page-stock'); const a=document.activeElement; if(STK._pend&&pg&&pg.classList.contains('active')&&!(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName))) stkRender(); },250); });
+
+// ───── ট্যাব ১: দৈনিক শিট ─────
+function stkSetDate(d){ const od=STK.set.openDate,t=lvTodayISO(); if(!d) return; if(d<od) d=od; if(d>t) d=t; STK.date=d; STK.open=null; stkRender(); }
+function stkShift(n){ stkSetDate(stayAddDays(STK.date,n)); }
+function stkSheetHtml(){
+  const L=stkLedger(), d=STK.date, t=lvTodayISO(), od=STK.set.openDate, canE=stkCanEdit(d), money=stkMoney();
+  const day=L.day[d]||{rec:{},buyAmt:0,foodCost:0}, stu=stkStu(d);
+  const missing=L.dates.filter(x=>x<=t&&!L.day[x].entered);
+  let h=`<div class="stk-nav"><button class="stk-btn2" onclick="stkShift(-1)" ${d<=od?'disabled':''}>◀</button>
+    <input type="date" class="stk-in" value="${d}" min="${od}" max="${t}" onchange="stkSetDate(this.value)">
+    <button class="stk-btn2" onclick="stkShift(1)" ${d>=t?'disabled':''}>▶</button>
+    <button class="stk-btn2" onclick="stkSetDate('${t}')">আজ</button></div>
+    <div style="margin:-4px 18px 8px;font-size:11.5px;color:#6b7a86;font-weight:600;">${stayFmt(d)}${canE?'':' • 🔒 শুধু দেখা যাবে'}</div>`;
+  if(missing.length&&stkLevel()!=='view') h+=`<div class="stk-warn" onclick="stkSetDate('${missing[0]}')" style="cursor:pointer;">⚠️ এন্ট্রি বাকি: ${missing.slice(0,6).map(stayShort).join(', ')}${missing.length>6?' ... (মোট '+bnDigits(missing.length)+' দিন)':''} — ট্যাপ করে প্রথমটিতে যান</div>`;
+  const perStu=stu.n?day.foodCost/stu.n:0;
+  h+=`<div class="stk-sum">`+(money?`<div><b>${stkM(day.buyAmt)}</b><span>আজকের ক্রয়</span></div><div><b>${stkM(day.foodCost)}</b><span>খাদ্য ব্যবহারের মূল্য</span></div>`:'')+
+    `<div><b><input type="number" min="0" id="stk-stu" class="stk-in" style="text-align:center;font-weight:700;padding:3px;" value="${stu.n}" ${canE?'':'disabled'} onchange="stkSaveStu(this.value)"></b><span>খাওয়ার ছাত্র${stu.est?' (আনুমানিক)':''}</span></div>`+
+    (money?`<div><b>${stu.n?stkM(perStu):'—'}</b><span>ছাত্রপ্রতি খাদ্যখরচ</span></div>`:'')+`</div>`;
+  const cats=[['all','সব']].concat(Object.entries(STK_CATS));
+  h+=`<div class="stk-chips">${cats.map(c=>`<span class="stk-chip ${STK.cat===c[0]?'on':''}" onclick="STK.cat='${c[0]}';stkRender()">${c[1]}</span>`).join('')}</div>
+    <div style="display:flex;gap:8px;margin:0 16px 10px;"><input class="stk-in" id="stk-q" placeholder="আইটেম খুঁজুন" value="${stkE(STK.q)}" oninput="STK.q=this.value;stkRefreshList()">
+    <button class="stk-btn2" onclick="STK.all=!STK.all;stkRender()" style="white-space:nowrap">${STK.all?'সক্রিয় দেখান':'সব আইটেম'}</button></div>
+    <div id="stk-list">${stkListHtml()}</div>
+    <div style="display:flex;gap:8px;margin:12px 16px;"><button class="stk-btn" style="flex:1" onclick="stkPdfDaily()">📄 দৈনিক শিট PDF</button></div>`;
+  return h;
+}
+function stkRefreshList(){ const el=document.getElementById('stk-list'); if(el) el.innerHTML=stkListHtml(); }
+function stkListHtml(){
+  const L=stkLedger(), d=STK.date, rec=(L.day[d]||{rec:{}}).rec, canE=stkCanEdit(d), q=STK.q.trim().toLowerCase(); let out='',lastCat='',n=0;
+  stkIds(STK.all).forEach(id=>{
+    const it=STK.items[id], r=rec[id]; if(!r) return;
+    if(STK.cat!=='all'&&it.cat!==STK.cat) return;
+    if(q&&!it.name.toLowerCase().includes(q)) return;
+    const active=r.o||r.bq||r.ut||r.aq||r.c; if(!active&&!STK.all&&STK.open!==id) return;
+    if(it.cat!==lastCat){ lastCat=it.cat; out+=`<div class="stk-cat">${STK_CATS[it.cat]||''}</div>`; }
+    n++; const low=it.min>0&&r.c<=it.min, neg=r.c<0;
+    out+=`<div class="stk-row"><div class="stk-rh" onclick="stkToggle('${id}')"><div><div class="stk-nm">${stkE(it.name)}</div><div class="stk-sub">${stkE(it.unit)}${it.on===0?' • নিষ্ক্রিয়':''}${low?' • <span class="stk-low">কম মজুদ</span>':''}${neg?' • <span class="stk-low">ঋণাত্মক!</span>':''}</div></div><div style="color:#8b98a3;font-size:12px">${STK.open===id?'▲':'▼'}</div></div>
+      <div class="stk-g"><div class="stk-c"><b>${stkN(r.o)}</b><span>প্রারম্ভিক</span></div><div class="stk-c"><b>${r.bq?'+'+stkN(r.bq):'—'}</b><span>ক্রয়</span></div><div class="stk-c"><b>${r.ut?stkN(r.ut):'—'}</b><span>খরচ</span></div><div class="stk-c" style="${low||neg?'border-color:#efb5b5;background:#fbe4e4':''}"><b>${stkN(r.c)}</b><span>অবশিষ্ট</span></div></div>`;
+    if(STK.open===id){
+      const avg=stkAvgUse(id), cover=(avg&&avg>0)?r.c/avg:null;
+      out+=`<div class="stk-ed">`+(canE?`<div class="stk-meals">${STK_MEALS.map((m,i)=>`<label>${m[1]}<input type="number" step="any" min="0" inputmode="decimal" id="stk-u-${m[0]}" value="${r.mu[i]||''}"></label>`).join('')}</div>
+        <div class="stk-eb"><button class="stk-btn" onclick="stkSaveUse('${id}')">💾 সংরক্ষণ</button><button class="stk-btn2" onclick="stkGoBuy('${id}')">➕ ক্রয়</button><button class="stk-btn2" onclick="stkGoAdj('${id}')">⚖️ সমন্বয়</button></div>`
+        :`<div class="stk-meals">${STK_MEALS.map((m,i)=>`<label>${m[1]}<div style="padding:8px 0;font-size:13px;color:#24313b">${r.mu[i]?stkN(r.mu[i]):'—'}</div></label>`).join('')}</div>`)+
+        `<div class="stk-info">${avg!=null?`গড় দৈনিক ব্যবহার (১৪ দিন): <b>${stkN(avg)}</b> ${stkE(it.unit)}`+(cover!=null?` • বর্তমান মজুদ প্রায় <b>${stkN(cover)}</b> দিন চলবে`:''):'গড় ব্যবহারের তথ্য এখনও নেই'}${it.min>0?` • ন্যূনতম: ${stkN(it.min)}`:''}${r.aq?` • সমন্বয়: ${r.aq>0?'+':''}${stkN(r.aq)}`:''}</div></div>`;
+    }
+    out+=`</div>`;
+  });
+  return out||`<div style="text-align:center;padding:26px;color:#8b98a3;font-size:12.5px">কোনো আইটেম নেই${STK.all?'':' — "সব আইটেম" চাপলে সব দেখা যাবে'}</div>`;
+}
+function stkToggle(id){ STK.open=(STK.open===id)?null:id; stkRefreshList(); }
+function stkSaveStu(v){
+  const d=STK.date; if(!stkCanEdit(d)){ alert('এই তারিখ সম্পাদনার অনুমতি নেই।'); return; }
+  const n=Math.max(0,Math.round(+v||0)); if(!STK.days[d]) STK.days[d]={}; STK.days[d].stu=n||null; if(!n) delete STK.days[d].stu;
+  STK._L=null; stkPut('stockDays/'+d+'/stu',n||null); stkLog('ছাত্রসংখ্যা',d+': '+n); stkRender();
+}
+function stkSaveUse(id){
+  const d=STK.date; if(!stkCanEdit(d)){ alert('এই তারিখ সম্পাদনার অনুমতি নেই।'); return; }
+  const o={}; let any=false;
+  for(const m of STK_MEALS){ const v=document.getElementById('stk-u-'+m[0]).value; const x=v===''?0:+v; if(x<0||isNaN(x)){ alert('সংখ্যা সঠিক নয়'); return; } if(x>0){ o[m[0]]=stkR(x); any=true; } }
+  const bad=stkTry(d,id,doc=>{ doc.use=doc.use||{}; if(any) doc.use[id]=o; else delete doc.use[id]; });
+  if(bad){ alert('এই পরিমাণ খরচ ধরলে "'+STK.items[id].name+'"-এর মজুদ '+stayFmt(bad)+' তারিখে ঋণাত্মক হয়ে যাবে। পরিমাণ যাচাই করুন।'); return; }
+  stkPut('stockDays/'+d+'/use/'+id,any?o:null); stkLog('খরচ',d+' • '+STK.items[id].name+': '+JSON.stringify(o)); STK.open=null; stkRender();
+}
+function stkGoBuy(id){ STK.pf.item=STK.items[id].name; STK.tab='buy'; stkRender(); window.scrollTo(0,0); }
+function stkGoAdj(id){ STK.pf.aitem=STK.items[id].name; STK.tab='adj'; stkRender(); window.scrollTo(0,0); }
+
+// ───── ট্যাব ২: ক্রয় ─────
+function stkItemDL(){ return `<datalist id="stk-dl">${stkIds(false).map(id=>`<option value="${stkE(STK.items[id].name)}"></option>`).join('')}</datalist>`; }
+function stkByName(nm){ nm=(nm||'').trim(); const ids=stkIds(true); return ids.find(id=>STK.items[id].name===nm)||null; }
+function stkSuppliers(){ const s=new Set(); Object.values(STK.days).forEach(dd=>Object.values(dd.buy||{}).forEach(p=>{ if(p.sup) s.add(p.sup); })); return [...s]; }
+function stkBuyHtml(){
+  const d=STK.date, t=lvTodayISO(), od=STK.set.openDate, pf=STK.pf, canE=stkCanEdit(d);
+  if(!STK.pm) STK.pm=d.slice(0,7);
+  return `<div class="stk-card"><div class="stk-h">🛒 নতুন ক্রয় এন্ট্রি</div>
+    <label class="stk-lbl">তারিখ</label><input type="date" class="stk-in" id="stk-p-date" value="${d}" min="${od}" max="${t}" onchange="STK.date=this.value">
+    <label class="stk-lbl">আইটেম (নাম লিখুন বা বেছে নিন)</label><input class="stk-in" id="stk-p-item" list="stk-dl" value="${stkE(pf.item||'')}" oninput="STK.pf.item=this.value;stkPUnit()" autocomplete="off">${stkItemDL()}
+    <div class="stk-2"><div><label class="stk-lbl">পরিমাণ <span id="stk-p-unit" style="color:#8b98a3"></span></label><input type="number" step="any" min="0" inputmode="decimal" class="stk-in" id="stk-p-qty"></div>
+    <div><label class="stk-lbl">মোট মূল্য (৳)</label><input type="number" step="any" min="0" inputmode="decimal" class="stk-in" id="stk-p-amt"></div></div>
+    <div class="stk-2"><div><label class="stk-lbl">সরবরাহকারী / দোকান</label><input class="stk-in" id="stk-p-sup" list="stk-dl2" value="${stkE(pf.sup||'')}" oninput="STK.pf.sup=this.value"><datalist id="stk-dl2">${stkSuppliers().map(s=>`<option value="${stkE(s)}">`).join('')}</datalist></div>
+    <div><label class="stk-lbl">বিল / মেমো নং</label><input class="stk-in" id="stk-p-bill" value="${stkE(pf.bill||'')}" oninput="STK.pf.bill=this.value"></div></div>
+    <button class="stk-btn stk-btng" style="width:100%;margin-top:12px" onclick="stkAddBuy()">➕ ক্রয় যোগ করুন</button>
+    <div class="stk-info">একই বিলের একাধিক আইটেম দিতে সরবরাহকারী ও বিল নং একবার দিলেই চলবে — যোগের পর সেগুলো থেকে যায়।</div></div>
+    <div id="stk-buylist">${stkBuyListHtml()}</div>`;
+}
+function stkPUnit(){ const id=stkByName(document.getElementById('stk-p-item').value), el=document.getElementById('stk-p-unit'); if(el) el.textContent=id?'('+STK.items[id].unit+')':''; }
+function stkAddBuy(){
+  const d=document.getElementById('stk-p-date').value, id=stkByName(document.getElementById('stk-p-item').value);
+  const qty=+document.getElementById('stk-p-qty').value, amtRaw=document.getElementById('stk-p-amt').value, amt=amtRaw===''?0:+amtRaw;
+  if(!stkCanEdit(d)){ alert('এই তারিখে এন্ট্রির অনুমতি নেই।'); return; }
+  if(!id){ alert('তালিকা থেকে সঠিক আইটেম বেছে নিন। না থাকলে "আইটেম" ট্যাবে যোগ করুন।'); return; }
+  if(!(qty>0)){ alert('পরিমাণ লিখুন'); return; }
+  if(amt<0||isNaN(amt)){ alert('মূল্য সঠিক নয়'); return; }
+  if(amtRaw===''&&!confirm('মূল্য ছাড়া ক্রয় যোগ করবেন? (ব্যয়ের হিসাবে ০ ধরা হবে)')) return;
+  const pid=stkId('p'), u=stkUser(), e={item:id,qty:stkR(qty),amt:Math.round(amt*100)/100,sup:(document.getElementById('stk-p-sup').value||'').trim(),bill:(document.getElementById('stk-p-bill').value||'').trim(),by:u.roleLabel||u.role||'',at:Date.now()};
+  if(!STK.days[d]) STK.days[d]={}; STK.days[d].buy=STK.days[d].buy||{}; STK.days[d].buy[pid]=e; STK._L=null;
+  stkPut('stockDays/'+d+'/buy/'+pid,e); stkLog('ক্রয়',d+' • '+STK.items[id].name+' '+e.qty+' '+STK.items[id].unit+' ৳'+e.amt+(e.bill?' • বিল '+e.bill:''));
+  STK.date=d; STK.pf.item=''; stkRender();
+  const el=document.getElementById('stk-p-item'); if(el) el.focus();
+}
+function stkBuyList(){
+  const out=[]; const q=STK.pq.trim().toLowerCase();
+  Object.entries(STK.days).forEach(([d,doc])=>{ if(d.slice(0,7)!==STK.pm) return; Object.entries(doc.buy||{}).forEach(([pid,p])=>{ const it=STK.items[p.item]; if(!it) return; const hay=(it.name+' '+(p.sup||'')+' '+(p.bill||'')).toLowerCase(); if(q&&!hay.includes(q)) return; out.push({d,pid,p,it}); }); });
+  return out.sort((a,b)=>(b.d.localeCompare(a.d))||((b.p.at||0)-(a.p.at||0)));
+}
+function stkBuyListHtml(){
+  const list=stkBuyList(), tot=list.reduce((s,x)=>s+(+x.p.amt||0),0);
+  return `<div class="stk-card"><div class="stk-h">📒 ক্রয় রেজিস্টার</div>
+    <div class="stk-2"><input type="month" class="stk-in" value="${STK.pm}" onchange="STK.pm=this.value;stkRefreshBuy()"><input class="stk-in" placeholder="আইটেম/দোকান/বিল নং" value="${stkE(STK.pq)}" oninput="STK.pq=this.value;stkRefreshBuy()"></div>
+    <div style="margin:10px 0 4px;font-size:12px;font-weight:700;color:#24313b">মোট ${bnDigits(list.length)}টি এন্ট্রি • ${stkM(tot)}</div>
+    ${list.map(x=>`<div class="stk-li"><div><b>${stkE(x.it.name)}</b> — ${stkN(x.p.qty)} ${stkE(x.it.unit)}<br><span style="color:#8b98a3;font-size:10.5px">${stayShort(x.d)}${x.p.sup?' • '+stkE(x.p.sup):''}${x.p.bill?' • বিল '+stkE(x.p.bill):''}${x.p.note?' • '+stkE(x.p.note):''}</span></div>
+      <div style="text-align:right;white-space:nowrap"><b>${x.p.amt?stkM(x.p.amt):'—'}</b>${x.p.amt&&x.p.qty?`<br><span style="color:#8b98a3;font-size:10.5px">${stkM(x.p.amt/x.p.qty)}/${stkE(x.it.unit)}</span>`:''}${stkCanEdit(x.d)?`<br><span style="color:#c94545;cursor:pointer;font-size:11px" onclick="stkDelBuy('${x.d}','${x.pid}')">🗑️ মুছুন</span>`:''}</div></div>`).join('')||'<div style="color:#8b98a3;font-size:12px;padding:8px 0">এই মাসে কোনো ক্রয় নেই</div>'}</div>`;
+}
+function stkRefreshBuy(){ const el=document.getElementById('stk-buylist'); if(el) el.innerHTML=stkBuyListHtml(); }
+function stkDelBuy(d,pid){
+  const p=((STK.days[d]||{}).buy||{})[pid]; if(!p||!stkCanEdit(d)) return; const it=STK.items[p.item];
+  if(!confirm('"'+it.name+'" '+stkN(p.qty)+' '+it.unit+' ক্রয়ের এন্ট্রি মুছবেন?')) return;
+  const bad=stkTry(d,p.item,doc=>{ delete doc.buy[pid]; });
+  if(bad){ alert('এই ক্রয় মুছলে "'+it.name+'"-এর মজুদ '+stayFmt(bad)+' তারিখে ঋণাত্মক হয়ে যাবে। আগে ওই দিনের খরচ ঠিক করুন।'); return; }
+  stkPut('stockDays/'+d+'/buy/'+pid,null); stkLog('ক্রয় মোছা',d+' • '+it.name+' '+p.qty+' ৳'+p.amt+(p.bill?' • বিল '+p.bill:'')); stkRender();
+}
+
+// ───── ট্যাব ৩: সমন্বয় ও প্রকৃত মজুদ যাচাই ─────
+function stkAdjHtml(){
+  const d=STK.date, t=lvTodayISO(), od=STK.set.openDate, pf=STK.pf;
+  return `<div class="stk-card"><div class="stk-h">⚖️ মজুদ সমন্বয় (অপচয়, ঘাটতি ইত্যাদি)</div>
+    <label class="stk-lbl">তারিখ</label><input type="date" class="stk-in" id="stk-a-date" value="${d}" min="${od}" max="${t}" onchange="STK.date=this.value">
+    <label class="stk-lbl">আইটেম</label><input class="stk-in" id="stk-a-item" list="stk-dl" value="${stkE(pf.aitem||'')}" oninput="STK.pf.aitem=this.value" autocomplete="off">${stkItemDL()}
+    <div class="stk-2"><div><label class="stk-lbl">কারণ</label><select class="stk-in" id="stk-a-type" onchange="document.getElementById('stk-a-dir-w').style.display=(this.value==='count'?'block':'none')">${Object.entries(STK_ADJ).map(([k,v])=>`<option value="${k}">${v[0]}</option>`).join('')}</select></div>
+    <div><label class="stk-lbl">পরিমাণ</label><input type="number" step="any" min="0" inputmode="decimal" class="stk-in" id="stk-a-qty"></div></div>
+    <div id="stk-a-dir-w" style="display:none"><label class="stk-lbl">গণনায় মজুদ</label><select class="stk-in" id="stk-a-dir"><option value="-1">কমবে</option><option value="1">বাড়বে</option></select></div>
+    <label class="stk-lbl">বিবরণ (বাধ্যতামূলক)</label><input class="stk-in" id="stk-a-note" placeholder="কী কারণে, কীভাবে">
+    <button class="stk-btn" style="width:100%;margin-top:12px" onclick="stkAddAdj()">সমন্বয় সংরক্ষণ</button></div>
+    <div class="stk-card"><div class="stk-h">🔢 প্রকৃত মজুদ গণনা (Stocktake)</div>
+    <div class="stk-info" style="margin:0 0 8px">ভাণ্ডারে যা সত্যিই আছে তা লিখুন। শুধু যেগুলোর ঘর পূরণ করবেন সেগুলো মিলিয়ে দেখা হবে; পার্থক্য থাকলে আজকের তারিখে "গণনায় সংশোধন" হিসেবে সমন্বয় হবে।</div>
+    <input class="stk-in" placeholder="আইটেম খুঁজুন" oninput="STK.sq=this.value;stkRefreshCount()" value="${stkE(STK.sq||'')}">
+    <div id="stk-count">${stkCountHtml()}</div>
+    <button class="stk-btn stk-btng" style="width:100%;margin-top:10px" onclick="stkApplyCount()">✅ গণনা প্রয়োগ করুন</button></div>
+    <div id="stk-adjlist">${stkAdjListHtml()}</div>`;
+}
+function stkAddAdj(){
+  const d=document.getElementById('stk-a-date').value, id=stkByName(document.getElementById('stk-a-item').value), type=document.getElementById('stk-a-type').value;
+  const qty=+document.getElementById('stk-a-qty').value, note=(document.getElementById('stk-a-note').value||'').trim();
+  if(!stkCanEdit(d)){ alert('এই তারিখে এন্ট্রির অনুমতি নেই।'); return; }
+  if(!id){ alert('সঠিক আইটেম বেছে নিন'); return; } if(!(qty>0)){ alert('পরিমাণ লিখুন'); return; } if(!note){ alert('বিবরণ লিখুন — সমন্বয়ের কারণ বাধ্যতামূলক'); return; }
+  let sign=STK_ADJ[type][1]; if(sign===0) sign=+document.getElementById('stk-a-dir').value;
+  stkApplyAdj(d,id,sign*qty,type,note);
+}
+function stkApplyAdj(d,id,q,type,note){
+  const aid=stkId('a'), u=stkUser(), e={item:id,qty:stkR(q),type,note,by:u.roleLabel||u.role||'',at:Date.now()};
+  const bad=stkTry(d,id,doc=>{ doc.adj=doc.adj||{}; doc.adj[aid]=e; });
+  if(bad){ alert('এই সমন্বয়ে "'+STK.items[id].name+'"-এর মজুদ '+stayFmt(bad)+' তারিখে ঋণাত্মক হয়ে যাবে।'); return false; }
+  stkPut('stockDays/'+d+'/adj/'+aid,e); stkLog('সমন্বয়',d+' • '+STK.items[id].name+' '+(q>0?'+':'')+q+' • '+STK_ADJ[type][0]+' • '+note); return true;
+}
+function stkAdjListHtml(){
+  const m=(STK.pm||STK.date.slice(0,7)); const out=[];
+  Object.entries(STK.days).forEach(([d,doc])=>{ if(d.slice(0,7)!==m) return; Object.entries(doc.adj||{}).forEach(([aid,a])=>{ if(STK.items[a.item]) out.push({d,aid,a,it:STK.items[a.item]}); }); });
+  out.sort((x,y)=>y.d.localeCompare(x.d)||((y.a.at||0)-(x.a.at||0)));
+  return `<div class="stk-card"><div class="stk-h">📝 এই মাসের সমন্বয় (${bnDigits(out.length)}টি)</div>${out.map(x=>`<div class="stk-li"><div><b>${stkE(x.it.name)}</b> ${x.a.qty>0?'+':''}${stkN(x.a.qty)} ${stkE(x.it.unit)}<br><span style="color:#8b98a3;font-size:10.5px">${stayShort(x.d)} • ${(STK_ADJ[x.a.type]||['—'])[0]} • ${stkE(x.a.note)}</span></div>${stkCanEdit(x.d)?`<span style="color:#c94545;cursor:pointer;font-size:11px;white-space:nowrap" onclick="stkDelAdj('${x.d}','${x.aid}')">🗑️ মুছুন</span>`:''}</div>`).join('')||'<div style="color:#8b98a3;font-size:12px">কোনো সমন্বয় নেই</div>'}</div>`;
+}
+function stkDelAdj(d,aid){
+  const a=((STK.days[d]||{}).adj||{})[aid]; if(!a||!stkCanEdit(d)) return; if(!confirm('এই সমন্বয় এন্ট্রি মুছবেন?')) return;
+  const bad=stkTry(d,a.item,doc=>{ delete doc.adj[aid]; });
+  if(bad){ alert('এটি মুছলে মজুদ '+stayFmt(bad)+' তারিখে ঋণাত্মক হয়ে যাবে।'); return; }
+  stkPut('stockDays/'+d+'/adj/'+aid,null); stkLog('সমন্বয় মোছা',d+' • '+STK.items[a.item].name+' '+a.qty); stkRender();
+}
+function stkCountHtml(){
+  const L=stkLedger(), t=lvTodayISO(), rec=(L.day[t]||{rec:{}}).rec, q=(STK.sq||'').trim().toLowerCase(); let out='';
+  stkIds(false).forEach(id=>{ const it=STK.items[id], r=rec[id]; if(!r) return; if(q&&!it.name.toLowerCase().includes(q)) return; if(!q&&!(r.c||r.ut||r.bq||r.o)) return;
+    out+=`<div class="stk-li" style="align-items:center"><div style="flex:1"><b>${stkE(it.name)}</b><br><span style="color:#8b98a3;font-size:10.5px">সিস্টেমে: ${stkN(r.c)} ${stkE(it.unit)}</span></div><input type="number" step="any" min="0" inputmode="decimal" class="stk-in" style="width:90px;text-align:center" data-cid="${id}" placeholder="গণনা"></div>`; });
+  return out||'<div style="color:#8b98a3;font-size:12px;padding:8px 0">কোনো আইটেম নেই</div>';
+}
+function stkRefreshCount(){ const el=document.getElementById('stk-count'); if(el) el.innerHTML=stkCountHtml(); }
+function stkApplyCount(){
+  const t=lvTodayISO(); if(!stkCanEdit(t)){ alert('অনুমতি নেই'); return; }
+  const L=stkLedger(), rec=(L.day[t]||{rec:{}}).rec, diffs=[];
+  document.querySelectorAll('#stk-count input[data-cid]').forEach(inp=>{ if(inp.value==='') return; const id=inp.dataset.cid, c=+inp.value, sys=rec[id]?rec[id].c:0, dlt=stkR(c-sys); if(Math.abs(dlt)>1e-6) diffs.push({id,c,sys,dlt}); });
+  if(!diffs.length){ alert('কোনো পার্থক্য পাওয়া যায়নি (বা কোনো ঘর পূরণ করা হয়নি)।'); return; }
+  if(!confirm('পার্থক্য পাওয়া গেছে:\n'+diffs.slice(0,12).map(x=>STK.items[x.id].name+': '+stkN(x.sys)+' → '+stkN(x.c)).join('\n')+(diffs.length>12?'\n... আরও '+bnDigits(diffs.length-12)+'টি':'')+'\n\nসমন্বয় প্রয়োগ করবেন?')) return;
+  let ok=0; diffs.forEach(x=>{ if(stkApplyAdj(t,x.id,x.dlt,'count','প্রকৃত গণনা — সিস্টেম '+x.sys+', গণনা '+x.c)) ok++; });
+  alert('✅ '+bnDigits(ok)+'টি আইটেমের মজুদ সমন্বয় হয়েছে।'); STK.sq=''; stkRender();
+}
+
+// ───── ট্যাব ৪: রিপোর্ট ─────
+function stkMonthData(ym){
+  const L=stkLedger(), t=lvTodayISO(), dates=L.dates.filter(d=>d.slice(0,7)===ym&&d<=t);
+  const items={}; let buy=0,food=0,other=0,loss=0,stuSum=0,foodForStu=0,entered=0; const perDay=[];
+  dates.forEach(d=>{ const dd=L.day[d]; if(dd.entered) entered++; buy+=dd.buyAmt; food+=dd.foodCost; other+=dd.otherCost; loss+=dd.adjLoss;
+    const s=stkStu(d); if(dd.entered&&s.n){ stuSum+=s.n; foodForStu+=dd.foodCost; } perDay.push({d,v:(dd.entered&&s.n)?dd.foodCost/s.n:0});
+    Object.keys(dd.rec).forEach(id=>{ const r=dd.rec[id]; const x=items[id]||(items[id]={o:r.o,bq:0,bamt:0,ut:0,uc:0,aq:0,c:0}); x.bq+=r.bq; x.bamt+=r.bamt; x.ut+=r.ut; x.uc+=r.uc; x.aq+=r.aq; x.c=r.c; }); });
+  return {dates,items,buy,food,other,loss,entered,perStu:stuSum?foodForStu/stuSum:0,perDay};
+}
+function stkReportHtml(){
+  const ym=STK.rm||(STK.rm=lvTodayISO().slice(0,7)), md=stkMonthData(ym), money=stkMoney(), L=stkLedger();
+  const rows=Object.keys(md.items).filter(id=>{ const x=md.items[id]; return x.o||x.bq||x.ut||x.aq||x.c; }).sort((a,b)=>md.items[b].uc-md.items[a].uc);
+  const maxv=Math.max(0.0001,...md.perDay.map(x=>x.v));
+  const low=stkLowList();
+  let h=`<div class="stk-card"><div class="stk-h">📅 মাস নির্বাচন</div><input type="month" class="stk-in" value="${ym}" max="${lvTodayISO().slice(0,7)}" min="${STK.set.openDate.slice(0,7)}" onchange="STK.rm=this.value;stkRender()"></div>`;
+  h+=`<div class="stk-sum"><div><b>${bnDigits(md.entered)}/${bnDigits(md.dates.length)}</b><span>এন্ট্রি-সম্পন্ন দিন</span></div>`+
+    (money?`<div><b>${stkM(md.buy)}</b><span>মোট ক্রয়</span></div><div><b>${stkM(md.food)}</b><span>খাদ্য ব্যবহারের মূল্য</span></div><div><b>${stkM(md.other)}</b><span>অন্যান্য সামগ্রীর ব্যবহার</span></div><div><b>${stkM(md.perStu)}</b><span>ছাত্রপ্রতি দৈনিক গড় খাদ্যখরচ</span></div><div><b style="color:${md.loss>0?'#c94545':'#24313b'}">${stkM(md.loss)}</b><span>অপচয়/ঘাটতির মূল্য</span></div>`:'')+`</div>`;
+  if(money&&md.perDay.some(x=>x.v>0)) h+=`<div class="stk-card"><div class="stk-h">📈 দৈনিক ছাত্রপ্রতি খাদ্যখরচ</div><div class="stk-bars">${md.perDay.map(x=>`<div title="${x.d}: ${Math.round(x.v)}" style="height:${Math.max(2,x.v/maxv*100)}%;opacity:${x.v?1:.15}"></div>`).join('')}</div><div class="stk-info" style="display:flex;justify-content:space-between"><span>${md.dates.length?stayShort(md.dates[0]):''}</span><span>সর্বোচ্চ ${stkM(maxv)}</span><span>${md.dates.length?stayShort(md.dates[md.dates.length-1]):''}</span></div></div>`;
+  h+=`<div class="stk-card"><div class="stk-h">🚨 কম মজুদ ও ক্রয় তালিকা (${bnDigits(low.length)})</div>${low.map(x=>`<div class="stk-li"><div><b>${stkE(x.it.name)}</b><br><span style="color:#8b98a3;font-size:10.5px">আছে ${stkN(x.q)} • ন্যূনতম ${stkN(x.it.min)} ${stkE(x.it.unit)}</span></div><div style="text-align:right"><b style="color:#c94545">কিনুন ≈ ${stkN(x.need)}</b> ${stkE(x.it.unit)}</div></div>`).join('')||'<div style="color:#8b98a3;font-size:12px">কোনো আইটেম ন্যূনতম মজুদের নিচে নেই (আইটেম ট্যাবে ন্যূনতম মজুদ নির্ধারণ করুন)</div>'}
+    ${low.length?`<button class="stk-btn2" style="width:100%;margin-top:10px" onclick="stkPdfReorder()">📄 ক্রয় তালিকা PDF</button>`:''}</div>`;
+  h+=`<div class="stk-card"><div class="stk-h">📦 মাসিক আইটেমভিত্তিক সারাংশ</div>${rows.map(id=>{ const x=md.items[id],it=STK.items[id]; return `<div class="stk-li"><div><b>${stkE(it.name)}</b><br><span style="color:#8b98a3;font-size:10.5px">প্রারম্ভিক ${stkN(x.o)} • ক্রয় ${stkN(x.bq)} • ব্যবহার ${stkN(x.ut)} • অবশিষ্ট ${stkN(x.c)} ${stkE(it.unit)}</span></div>${money?`<div style="text-align:right;white-space:nowrap"><b>${stkM(x.uc)}</b></div>`:''}</div>`; }).join('')||'<div style="color:#8b98a3;font-size:12px">এই মাসে কোনো লেনদেন নেই</div>'}
+    <button class="stk-btn" style="width:100%;margin-top:10px" onclick="stkPdfMonthly()">📄 মাসিক রিপোর্ট PDF</button></div>`;
+  if(stkLevel()==='full'){ const lg=Object.values(STK.log||{}).sort((a,b)=>b.at-a.at).slice(0,40);
+    h+=`<div class="stk-card"><div class="stk-h">🕵️ অডিট লগ (সর্বশেষ ৪০)</div>${lg.map(x=>`<div class="stk-li"><div style="font-size:11px"><b>${stkE(x.act)}</b> — ${stkE(x.d)}<br><span style="color:#8b98a3">${stkE(x.by)} • ${new Date(x.at).toLocaleString('bn-BD')}</span></div></div>`).join('')||'<div style="color:#8b98a3;font-size:12px">লগ খালি</div>'}</div>`; }
+  return h;
+}
+function stkLowList(){
+  const L=stkLedger(), out=[]; stkIds(false).forEach(id=>{ const it=STK.items[id], f=L.final[id]; if(!f||!(it.min>0)) return; if(f.q<=it.min){ const target=it.par>0?it.par:it.min*2; out.push({id,it,q:f.q,need:Math.max(0,target-f.q)}); } });
+  return out;
+}
+
+// ───── ট্যাব ৫: আইটেম মাস্টার ─────
+function stkItemsHtml(){
+  const q=(STK.iq||'').trim().toLowerCase(), full=stkLevel()==='full';
+  const unitDL=`<datalist id="stk-ul">${['কেজি','গ্রাম','লিটার','পিস','প্যাকেট','ডজন','বান্ডিল','রিম','গজ','বক্স','মন','মোঠা','টি'].map(u=>`<option value="${u}">`).join('')}</datalist>`;
+  let h=`<div style="display:flex;gap:8px;margin:0 16px 10px"><input class="stk-in" placeholder="আইটেম খুঁজুন" value="${stkE(STK.iq||'')}" oninput="STK.iq=this.value;stkRefreshItems()"><button class="stk-btn" style="white-space:nowrap" onclick="STK.edit='new';stkRender()">➕ নতুন</button></div>${unitDL}`;
+  if(STK.edit==='new') h+=stkItemForm(null);
+  h+=`<div id="stk-itemlist">${stkItemListHtml()}</div>`; return h;
+}
+function stkRefreshItems(){ const el=document.getElementById('stk-itemlist'); if(el) el.innerHTML=stkItemListHtml(); }
+function stkItemListHtml(){
+  const q=(STK.iq||'').trim().toLowerCase(); let out='',last='';
+  stkIds(true).forEach(id=>{ const it=STK.items[id]; if(q&&!it.name.toLowerCase().includes(q)) return; if(it.cat!==last){ last=it.cat; out+=`<div class="stk-cat">${STK_CATS[it.cat]||''}</div>`; }
+    if(STK.edit===id) out+=stkItemForm(id);
+    else out+=`<div class="stk-row" onclick="STK.edit='${id}';stkRender()"><div class="stk-rh"><div><div class="stk-nm">${stkE(it.name)}${it.on===0?' <span style="color:#c94545;font-size:10px">(নিষ্ক্রিয়)</span>':''}</div><div class="stk-sub">${stkE(it.unit)} • ন্যূনতম ${it.min>0?stkN(it.min):'—'}${it.par>0?' • লক্ষ্য '+stkN(it.par):''}${stkMoney()&&it.rate>0?' • দর '+stkM(it.rate)+'/'+stkE(it.unit):''}</div></div><span style="color:#8b98a3">✏️</span></div></div>`; });
+  return out;
+}
+function stkItemForm(id){
+  const it=id?STK.items[id]:{name:'',unit:'কেজি',cat:'food',min:0,par:0,rate:0,on:1}, full=stkLevel()==='full', sug=id?stkAvgUse(id):null;
+  return `<div class="stk-card"><div class="stk-h">${id?'✏️ আইটেম সম্পাদনা':'➕ নতুন আইটেম'}</div>
+    <label class="stk-lbl">নাম</label><input class="stk-in" id="stk-i-name" value="${stkE(it.name)}">
+    <div class="stk-2"><div><label class="stk-lbl">ইউনিট</label><input class="stk-in" id="stk-i-unit" list="stk-ul" value="${stkE(it.unit)}"></div>
+    <div><label class="stk-lbl">বিভাগ</label><select class="stk-in" id="stk-i-cat">${Object.entries(STK_CATS).map(([k,v])=>`<option value="${k}" ${it.cat===k?'selected':''}>${v}</option>`).join('')}</select></div></div>
+    <div class="stk-2"><div><label class="stk-lbl">ন্যূনতম মজুদ (সতর্কতা)</label><input type="number" step="any" min="0" class="stk-in" id="stk-i-min" value="${it.min||''}"></div>
+    <div><label class="stk-lbl">লক্ষ্য মজুদ (ক্রয়ের সীমা)</label><input type="number" step="any" min="0" class="stk-in" id="stk-i-par" value="${it.par||''}"></div></div>
+    ${sug!=null&&sug>0?`<div class="stk-info">💡 প্রস্তাবিত ন্যূনতম: <b>${stkN(sug*STK_LEAD)}</b> ${stkE(it.unit)} (গড় দৈনিক ব্যবহার ${stkN(sug)} × ${bnDigits(STK_LEAD)} দিন) <span style="color:#a9822f;cursor:pointer;font-weight:700" onclick="document.getElementById('stk-i-min').value=${stkR(sug*STK_LEAD)}">[প্রয়োগ]</span></div>`:''}
+    ${stkMoney()?`<label class="stk-lbl">প্রতি ইউনিটের আনুমানিক দর (৳) — প্রারম্ভিক মজুদের মূল্য নির্ণয়ে</label><input type="number" step="any" min="0" class="stk-in" id="stk-i-rate" value="${it.rate||''}">`:''}
+    ${id?'':`<label class="stk-lbl">বর্তমান মজুদ (ঐচ্ছিক)</label><input type="number" step="any" min="0" class="stk-in" id="stk-i-stock" placeholder="০">`}
+    <div class="stk-eb"><button class="stk-btn" onclick="stkSaveItem('${id||''}')">💾 সংরক্ষণ</button><button class="stk-btn2" onclick="STK.edit=null;stkRender()">বাতিল</button>${id&&full?`<button class="stk-btn2" style="color:${it.on===0?'#2f9e5c':'#c94545'}" onclick="stkToggleItem('${id}')">${it.on===0?'✅ সক্রিয় করুন':'🚫 নিষ্ক্রিয় করুন'}</button>`:''}</div></div>`;
+}
+function stkSaveItem(id){
+  const name=document.getElementById('stk-i-name').value.trim().replace(/[<>"'&]/g,''), unit=document.getElementById('stk-i-unit').value.trim(), cat=document.getElementById('stk-i-cat').value;
+  const min=+document.getElementById('stk-i-min').value||0, par=+document.getElementById('stk-i-par').value||0, rEl=document.getElementById('stk-i-rate'), rate=rEl?(+rEl.value||0):(id?STK.items[id].rate:0);
+  if(!name||!unit){ alert('নাম ও ইউনিট লিখুন'); return; }
+  if(Object.keys(STK.items).some(k=>k!==id&&STK.items[k].name===name&&STK.items[k].unit===unit)){ alert('এই নাম ও ইউনিটের আইটেম আগেই আছে।'); return; }
+  const t=lvTodayISO();
+  if(id){ const it=Object.assign({},STK.items[id],{name,unit,cat,min,par,rate}); STK.items[id]=it; stkPut('stockItems/'+id,it); stkLog('আইটেম সম্পাদনা',name); }
+  else{
+    const nid=stkId('n'), no=Math.max(0,...Object.values(STK.items).map(x=>x.no||0))+1, it={no,name,unit,cat,min,par,rate,on:1};
+    STK.items[nid]=it; STK._L=null; stkPut('stockItems/'+nid,it); stkLog('নতুন আইটেম',name+' ('+unit+')');
+    const st=+(document.getElementById('stk-i-stock')||{}).value||0; if(st>0){ stkApplyAdj(t,nid,st,'open','আইটেম যোগের সময় বর্তমান মজুদ'); }
+  }
+  STK.edit=null; STK._L=null; stkRender();
+}
+function stkToggleItem(id){ if(stkLevel()!=='full') return; const it=STK.items[id]; it.on=(it.on===0)?1:0; stkPut('stockItems/'+id+'/on',it.on); stkLog('আইটেম '+(it.on?'সক্রিয়':'নিষ্ক্রিয়'),it.name); STK.edit=null; stkRender(); }
+
+// ───── PDF ─────
+async function stkMakePdf(spec){
+  try{
+    await stayEnsurePdfLibs(); if(document.fonts&&document.fonts.ready) await document.fonts.ready;
+  }catch(e){ alert('PDF তৈরির সরঞ্জাম লোড হয়নি — ইন্টারনেট সংযোগ লাগবে।'); return; }
+  const land=!!spec.land, W=land?1123:794, H=land?794:1123, per=land?29:42, pages=[];
+  for(let i=0;i<spec.rows.length;i+=per) pages.push(spec.rows.slice(i,i+per)); if(!pages.length) pages.push([]);
+  const {jsPDF}=window.jspdf, pdf=new jsPDF({orientation:land?'l':'p',unit:'mm',format:'a4'});
+  const holder=document.createElement('div'); holder.style.cssText='position:fixed;left:-12000px;top:0;z-index:-1;'; document.body.appendChild(holder);
+  const fixed=spec.cols.reduce((a,c)=>a+(c.w||0),0), cell='border:1px solid #888;padding:0 5px;height:21px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;';
+  const al=a=>a==='l'?'left':a==='r'?'right':'center';
+  try{
+    for(let p=0;p<pages.length;p++){
+      holder.innerHTML=`<div style="width:${W}px;height:${H}px;box-sizing:border-box;padding:34px 34px 26px;background:#fff;color:#24313b;font-family:'Hind Siliguri',sans-serif;position:relative;overflow:hidden;">
+        <div style="text-align:center;border-bottom:2px solid #24313b;padding-bottom:6px;margin-bottom:8px;"><div style="font-size:18px;font-weight:700;">${stkE(spec.title)}</div><div style="font-size:11.5px;color:#555;margin-top:2px;">${stkE(spec.sub)}</div></div>
+        <table style="border-collapse:collapse;width:100%;table-layout:fixed;font-size:11px;"><colgroup>${spec.cols.map(c=>`<col${c.w?` style="width:${c.w}px"`:''}>`).join('')}</colgroup>
+        <tr style="background:#eee;">${spec.cols.map(c=>`<th style="${cell}text-align:center;height:30px;white-space:normal;font-size:10.5px;">${stkE(c.h)}</th>`).join('')}</tr>
+        ${pages[p].map(r=>r.sec?`<tr style="background:#f6efdc;"><td colspan="${spec.cols.length}" style="${cell}font-weight:700;text-align:left;">${stkE(r.sec)}</td></tr>`:`<tr>${r.map((v,i)=>`<td style="${cell}text-align:${al(spec.cols[i].a)};">${stkE(v)}</td>`).join('')}</tr>`).join('')}
+        </table>
+        <div style="position:absolute;left:34px;right:34px;bottom:12px;font-size:9.5px;color:#777;display:flex;justify-content:space-between;"><span>${stkE(spec.foot||'')} • প্রস্তুত: ${stayFmt(lvTodayISO())}</span><span>পৃষ্ঠা ${bnDigits(p+1)} / ${bnDigits(pages.length)}</span></div></div>`;
+      const cv=await window.html2canvas(holder.firstElementChild,{scale:2,backgroundColor:'#ffffff',useCORS:true});
+      if(p>0) pdf.addPage(); pdf.addImage(cv.toDataURL('image/jpeg',0.92),'JPEG',0,0,land?297:210,land?210:297);
+    }
+    pdf.save(spec.file);
+  }catch(e){ console.error(e); alert('PDF তৈরি করা যায়নি।'); }
+  finally{ holder.remove(); }
+}
+function stkPdfDaily(){
+  const L=stkLedger(), d=STK.date, rec=(L.day[d]||{rec:{}}).rec, money=stkMoney(); const rows=[]; let last='';
+  stkIds(STK.all).forEach(id=>{ const it=STK.items[id], r=rec[id]; if(!r) return; if(!(r.o||r.bq||r.ut||r.aq||r.c)&&!STK.all) return;
+    if(it.cat!==last){ last=it.cat; rows.push({sec:STK_CATS[it.cat]}); }
+    const row=[bnDigits(it.no||''),it.name,it.unit,stkN(r.o),r.bq?stkN(r.bq):'',stkN(r.o+r.bq)].concat(r.mu.map(v=>v?stkN(v):''),[stkN(r.ut),stkN(r.c)]); if(money) row.push(r.uc?stkM(r.uc):''); rows.push(row); });
+  const cols=[{h:'ক্রম',w:36,a:'c'},{h:'বিবরণ',a:'l'},{h:'ইউনিট',w:50,a:'c'},{h:'প্রারম্ভিক',w:70,a:'r'},{h:'ক্রয়',w:58,a:'r'},{h:'মোট স্টক',w:70,a:'r'}].concat(STK_MEALS.map(m=>({h:m[1],w:54,a:'r'})),[{h:'মোট খরচ',w:64,a:'r'},{h:'অবশিষ্ট',w:72,a:'r'}]); if(money) cols.push({h:'ব্যবহারের মূল্য',w:80,a:'r'});
+  const dd=L.day[d]||{}, stu=stkStu(d);
+  stkMakePdf({title:'দৈনিক স্টক শিট',sub:stayFmt(d)+' • ছাত্র '+bnDigits(stu.n)+(money&&dd.foodCost?' • খাদ্য ব্যবহারের মূল্য '+stkM(dd.foodCost)+' • ছাত্রপ্রতি '+stkM(stu.n?dd.foodCost/stu.n:0):''),cols,rows,land:true,file:'stock-daily-'+d+'.pdf',foot:'দৈনিক স্টক শিট'});
+}
+function stkPdfMonthly(){
+  const ym=STK.rm||lvTodayISO().slice(0,7), md=stkMonthData(ym), money=stkMoney();
+  const ids=Object.keys(md.items).filter(id=>{ const x=md.items[id]; return x.o||x.bq||x.ut||x.aq||x.c; }).sort((a,b)=>{ const x=STK.items[a],y=STK.items[b]; return (Object.keys(STK_CATS).indexOf(x.cat)-Object.keys(STK_CATS).indexOf(y.cat))||((x.no||0)-(y.no||0)); });
+  const rows=[]; let last='';
+  ids.forEach(id=>{ const it=STK.items[id], x=md.items[id]; if(it.cat!==last){ last=it.cat; rows.push({sec:STK_CATS[it.cat]}); } const row=[bnDigits(it.no||''),it.name,it.unit,stkN(x.o),stkN(x.bq),stkN(x.ut),stkN(x.c)]; if(money) row.push(x.uc?stkM(x.uc):'',x.bamt?stkM(x.bamt):''); rows.push(row); });
+  const cols=[{h:'ক্রম',w:34,a:'c'},{h:'বিবরণ',a:'l'},{h:'ইউনিট',w:50,a:'c'},{h:'প্রারম্ভিক',w:62,a:'r'},{h:'ক্রয়',w:58,a:'r'},{h:'ব্যবহার',w:58,a:'r'},{h:'অবশিষ্ট',w:62,a:'r'}]; if(money) cols.push({h:'ব্যবহারের মূল্য',w:80,a:'r'},{h:'ক্রয় মূল্য',w:76,a:'r'});
+  stkMakePdf({title:'মাসিক স্টক রিপোর্ট — '+LV_BN_MONTHS[+ym.slice(5,7)-1]+' '+bnDigits(ym.slice(0,4)),sub:money?('মোট ক্রয় '+stkM(md.buy)+' • খাদ্য ব্যবহার '+stkM(md.food)+' • অন্যান্য '+stkM(md.other)+' • ছাত্রপ্রতি দৈনিক গড় '+stkM(md.perStu)+' • এন্ট্রি '+bnDigits(md.entered)+'/'+bnDigits(md.dates.length)+' দিন'):('এন্ট্রি '+bnDigits(md.entered)+'/'+bnDigits(md.dates.length)+' দিন'),cols,rows,land:false,file:'stock-monthly-'+ym+'.pdf',foot:'মাসিক স্টক রিপোর্ট'});
+}
+function stkPdfReorder(){
+  const low=stkLowList(), rows=low.map((x,i)=>[bnDigits(i+1),x.it.name,x.it.unit,stkN(x.q),stkN(x.it.min),stkN(x.need)]);
+  stkMakePdf({title:'ক্রয় তালিকা (কম মজুদের আইটেম)',sub:stayFmt(lvTodayISO()),cols:[{h:'ক্রম',w:40,a:'c'},{h:'বিবরণ',a:'l'},{h:'ইউনিট',w:60,a:'c'},{h:'আছে',w:80,a:'r'},{h:'ন্যূনতম',w:80,a:'r'},{h:'কেনা দরকার (≈)',w:110,a:'r'}],rows,land:false,file:'stock-reorder-'+lvTodayISO()+'.pdf',foot:'ক্রয় তালিকা'});
+}
+
+// ───── ড্যাশবোর্ড সংযোগ ─────
+function stkRenderDashWidget(){
+  const el=document.getElementById('stk-dash-widget'); if(!el) return;
+  const lv=stkLevel(); if(lv!=='full'&&lv!=='entry'){ el.innerHTML=''; return; }
+  if(!STK.started) stkStart();
+  if(!STK.set){ el.innerHTML=''; return; }
+  const L=stkLedger(), t=lvTodayISO(), today=L.day[t], missing=L.dates.filter(x=>x<t&&!L.day[x].entered), low=stkLowList();
+  el.innerHTML=`<div class="stk-card" style="margin:0 16px 14px"><div class="stk-h">📦 ভাণ্ডার অবস্থা</div>
+    <div style="font-size:12px;color:#34444f;line-height:1.9">আজকের এন্ট্রি: ${today&&today.entered?'<b style="color:#2f9e5c">✅ হয়েছে</b>':'<b style="color:#a9822f">⏳ বাকি</b>'}<br>
+    কম মজুদ: <b style="color:${low.length?'#c94545':'#2f9e5c'}">${bnDigits(low.length)}টি আইটেম</b>${missing.length?`<br>⚠️ আগের <b>${bnDigits(missing.length)}</b> দিনের এন্ট্রি বাকি`:''}</div>
+    <button class="stk-btn" style="width:100%;margin-top:8px" onclick="goStock()">স্টক ম্যানেজমেন্ট খুলুন</button></div>`;
+}
+function stkDashTweak(){
+  const page=document.getElementById('page-dashboard'); if(!page) return;
+  [...page.children].forEach(ch=>{ if(ch.dataset&&ch.dataset.stkHid){ ch.style.display=''; delete ch.dataset.stkHid; } });
+  if(stkUser().role==='dining'){
+    const qa=document.getElementById('quickActions'), qh=qa?qa.previousElementSibling:null, keep=['stk-dash-widget','roleBanner','quickActions'];
+    [...page.children].forEach(ch=>{ if(ch.classList.contains('topbar')||ch.classList.contains('greeting-section')||ch.classList.contains('date-prayer-row')||keep.includes(ch.id)||ch===qh) return; ch.dataset.stkHid='1'; ch.style.display='none'; });
+  }
+  stkRenderDashWidget();
+}
+(function(){ const _rd=renderDashboard; renderDashboard=function(){ _rd.apply(this,arguments); try{ stkDashTweak(); }catch(e){ console.error(e); } }; })();
 </script>
 
 <!-- ══ PAGE: আজ পর্যন্ত সম্পূর্ণ রুটিন প্রতিবেদন (ব্লক-ভিত্তিক, লাইভ, ক্লিক করলে তালিকা) ══ -->
