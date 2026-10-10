@@ -13294,10 +13294,12 @@ const STK_SEED_USE={"1":[10,11,10,0,0],"3":[2.5,1.5,2.5,0,0],"5":[5,0,0,0,0],"9"
 const STK_MEALS=[['b','সকাল'],['l','দুপুর'],['d','রাত'],['t','টিফিন'],['s','নাস্তা']];
 const STK_CATS={food:'খাদ্য ও মুদি',veg:'সবজি ও ফল',meat:'মাছ-মাংস-ডিম-দুধ',clean:'পরিষ্কার ও স্বাস্থ্যসামগ্রী',stat:'স্টেশনারি ও সরঞ্জাম'};
 const STK_RATION={food:1,veg:1,meat:1};            // খাদ্যখরচে ধরা হবে
+const STK_PERSON={food:1,veg:1,meat:1,clean:1};    // জনপ্রতি খরচে ধরা হবে (খাদ্য + পরিষ্কার সামগ্রী)
+const STK_GROUPS=[['stu','ছাত্র'],['tea','শিক্ষক'],['stf','কর্মচারী'],['gst','মেহমান']];
 const STK_EDIT_DAYS=1;                              // ডাইনিং ম্যানেজার আজ ও গতকাল সম্পাদনা করতে পারবেন
 const STK_LEAD=3;                                   // প্রস্তাবিত ন্যূনতম মজুদ = গড় দৈনিক ব্যবহার × ৩ দিন
 const STK_ADJ={waste:['অপচয়/নষ্ট',-1],lost:['হারানো/ঘাটতি',-1],ret:['ফেরত দেওয়া',-1],count:['গণনায় সংশোধন',0],gain:['অতিরিক্ত প্রাপ্তি/দান',1],open:['প্রারম্ভিক জমা',1]};
-let STK={items:{},days:{},set:null,log:{},tab:'sheet',date:null,cat:'all',q:'',all:false,open:null,edit:null,_L:null,started:false,tries:0,loaded:{},pm:null,pq:'',rm:null,pf:{},offline:false,_pend:false};
+let STK={items:{},days:{},set:null,log:{},menus:{},pb:null,cb:null,pk:null,me:null,pd:null,flash:null,tab:'sheet',date:null,cat:'all',q:'',all:false,open:null,edit:null,_L:null,started:false,tries:0,loaded:{},pm:null,pq:'',rm:null,pf:{},offline:false,_pend:false};
 
 const stkR=x=>Math.round((+x||0)*10000)/10000;
 const stkN=x=>bnDigits(String(Math.round((+x||0)*100)/100));
@@ -13343,6 +13345,7 @@ function stkStart(){
   fbListen('stockDays',v=>{ STK.days=v||{}; mark('days'); stkDirty(); });
   fbListen('stockSettings',v=>{ STK.set=(v&&v.openDate)?v:null; mark('set'); stkDirty(); });
   fbListen('stockLog',v=>{ STK.log=v||{}; if(STK.tab==='report') stkDirty(); });
+  fbListen('stockMenus',v=>{ STK.menus=v||{}; stkDirty(); });
 }
 function stkDirty(){
   STK._L=null;
@@ -13366,7 +13369,7 @@ function stkLedger(){
   ids.forEach(id=>{ const q=stkR((set.open||{})[id]||0), r=+STK.items[id].rate||0; st[id]={q,v:q*r,r}; });
   L.dates.forEach(d=>{
     const doc=STK.days[d]||{}, rec={}, bm={}, am={};
-    let buyAmt=0,foodCost=0,otherCost=0,adjLoss=0;
+    let buyAmt=0,foodCost=0,cleanCost=0,statCost=0,adjLoss=0;
     Object.values(doc.buy||{}).forEach(p=>{ (bm[p.item]=bm[p.item]||[]).push(p); });
     Object.values(doc.adj||{}).forEach(a=>{ (am[a.item]=am[a.item]||[]).push(a); });
     ids.forEach(id=>{
@@ -13376,16 +13379,15 @@ function stkLedger(){
       const avg=s.q>0?s.v/s.q:s.r, uc=ut*avg; s.q-=ut; s.v-=uc;
       (am[id]||[]).forEach(a=>{ const q=+a.qty||0, av=s.q>0?s.v/s.q:s.r; if(q<0){ const c=-q*av; s.v-=c; acost+=c; } else s.v+=q*av; s.q+=q; aq+=q; });
       if(s.q<=1e-9) s.v=0;
-      rec[id]={o:stkR(o),bq:stkR(bq),bamt,mu,ut:stkR(ut),uc,aq:stkR(aq),ac:acost,c:stkR(s.q)};
-      buyAmt+=bamt; if((STK.items[id].cat in STK_RATION)) foodCost+=uc; else otherCost+=uc; adjLoss+=acost;
+      rec[id]={o:stkR(o),bq:stkR(bq),bamt,mu,ut:stkR(ut),uc,av:avg,aq:stkR(aq),ac:acost,c:stkR(s.q)};
+      buyAmt+=bamt; const cat=STK.items[id].cat; if(cat in STK_RATION) foodCost+=uc; else if(cat==='clean') cleanCost+=uc; else statCost+=uc; adjLoss+=acost;
     });
-    const entered=!!(Object.keys(doc.buy||{}).length||Object.keys(doc.use||{}).length||Object.keys(doc.adj||{}).length||doc.stu);
-    L.day[d]={rec,buyAmt,foodCost,otherCost,adjLoss,entered};
+    const entered=!!(Object.keys(doc.buy||{}).length||Object.keys(doc.use||{}).length||Object.keys(doc.adj||{}).length||doc.stu||doc.tea||doc.stf||doc.gst);
+    L.day[d]={rec,buyAmt,foodCost,cleanCost,statCost,otherCost:cleanCost+statCost,personCost:foodCost+cleanCost,adjLoss,entered};
   });
   ids.forEach(id=>{ L.final[id]={q:stkR(st[id].q),v:st[id].v,r:st[id].r}; });
   STK._L=L; return L;
 }
-// পরিবর্তন প্রয়োগ করে দেখা: কোনো দিনে মজুদ ঋণাত্মক হলে বাতিল
 function stkTry(date,itemId,mut){
   const before=JSON.stringify(STK.days[date]||null);
   if(!STK.days[date]) STK.days[date]={};
@@ -13401,6 +13403,22 @@ function stkStuGuess(d){
   return Math.max(0,t-away.size);
 }
 function stkStu(d){ const s=(STK.days[d]||{}).stu; return s?{n:+s,est:false}:{n:stkStuGuess(d),est:true}; }
+function stkHeads(d){
+  const doc=STK.days[d]||{}, h={stu:+doc.stu||0,tea:+doc.tea||0,stf:+doc.stf||0,gst:+doc.gst||0}; let est=false;
+  if(!doc.stu){ h.stu=stkStuGuess(d); est=true; }
+  h.total=h.stu+h.tea+h.stf+h.gst; h.est=est; return h;
+}
+function stkCanPlan(d){ const lv=stkLevel(), t=lvTodayISO(), od=(STK.set||{}).openDate; return (lv==='full'||lv==='entry')&&!!od&&d>=od&&d>=stayAddDays(t,-1)&&d<=stayAddDays(t,1); }
+function stkSaveHead(k,v,d){
+  d=d||STK.date; if(!stkCanEdit(d)&&!stkCanPlan(d)){ alert('এই তারিখ সম্পাদনার অনুমতি নেই।'); return; }
+  const n=Math.max(0,Math.round(+v||0)); if(!STK.days[d]) STK.days[d]={};
+  if(n) STK.days[d][k]=n; else delete STK.days[d][k];
+  STK._L=null; stkPut('stockDays/'+d+'/'+k,n||null); stkLog('জনসংখ্যা',d+' • '+k+': '+n); stkRender();
+}
+function stkHeadsCard(d,canE){
+  const h=stkHeads(d);
+  return `<div class="stk-card"><div class="stk-h">👥 কারা খাবে / খেয়েছে — মোট ${bnDigits(h.total)} জন</div><div class="stk-meals" style="grid-template-columns:repeat(4,1fr)">${STK_GROUPS.map(g=>`<label>${g[1]}<input type="number" min="0" inputmode="numeric" ${canE?'':'disabled'} value="${h[g[0]]||''}" placeholder="০" onchange="stkSaveHead('${g[0]}',this.value,'${d}')"></label>`).join('')}</div>${h.est?'<div class="stk-info">ছাত্রসংখ্যা আনুমানিক (মোট ছাত্র − ছুটিতে থাকা)। সঠিক সংখ্যা লিখে দিন।</div>':''}</div>`;
+}
 function stkIds(includeOff){
   const ord=Object.keys(STK_CATS);
   return Object.keys(STK.items).filter(id=>includeOff||STK.items[id].on!==0).sort((a,b)=>{
@@ -13421,8 +13439,8 @@ function goStock(){
   if(stkLevel()==='view'&&STK.tab!=='sheet'&&STK.tab!=='report') STK.tab='sheet';
   showPage('stock'); stkRender();
 }
-function stkTabsList(){ return stkLevel()==='view'?[['sheet','📋 শিট'],['report','📊 রিপোর্ট']]:[['sheet','📋 শিট'],['buy','🛒 ক্রয়'],['adj','⚖️ যাচাই'],['report','📊 রিপোর্ট'],['items','🧾 আইটেম']]; }
-function stkTab(t){ STK.tab=t; STK.open=null; STK.edit=null; stkRender(); window.scrollTo(0,0); }
+function stkTabsList(){ return stkLevel()==='view'?[['sheet','📋 শিট'],['report','📊 রিপোর্ট']]:[['sheet','📋 শিট'],['buy','🛒 ক্রয়'],['use','🧾 খরচ'],['plan','🧮 পরিকল্পনা'],['adj','⚖️ যাচাই'],['report','📊 রিপোর্ট'],['items','📦 আইটেম']]; }
+function stkTab(t){ stkPkClose(); STK.tab=t; STK.open=null; STK.edit=null; stkRender(); window.scrollTo(0,0); }
 function stkRender(){
   const body=document.getElementById('stk-body'); if(!body) return;
   STK._pend=false;
@@ -13430,7 +13448,9 @@ function stkRender(){
   const lv=stkLevel(), sub=document.getElementById('stk-sub');
   if(sub) sub.textContent=(lv==='full'?'পূর্ণ নিয়ন্ত্রণ':lv==='entry'?'এন্ট্রি ও ব্যবস্থাপনা':'শুধু দেখা')+(STK.offline?' • ⚠️ অফলাইন':'');
   if(!STK.set){ body.innerHTML=`<div class="stk-warn">${(lv==='full'||lv==='entry')?'⏳ স্টক চালু হচ্ছে...':'স্টক ম্যানেজমেন্ট এখনও চালু করা হয়নি। অ্যাডমিন অফিসার বা ডাইনিং ম্যানেজার একবার খুললেই চালু হবে।'}</div>`; return; }
-  body.innerHTML=({sheet:stkSheetHtml,buy:stkBuyHtml,adj:stkAdjHtml,report:stkReportHtml,items:stkItemsHtml}[STK.tab]||stkSheetHtml)();
+  let html=({sheet:stkSheetHtml,buy:stkBuyHtml,use:stkUseHtml,plan:stkPlanHtml,adj:stkAdjHtml,report:stkReportHtml,items:stkItemsHtml}[STK.tab]||stkSheetHtml)();
+  if(STK.flash){ html='<div class="stk-warn" style="background:#eaf7ee;border-color:#b5dfc3;color:#1f6b3b;font-weight:600">'+STK.flash+'</div>'+html; STK.flash=null; }
+  body.innerHTML=html;
 }
 document.addEventListener('focusout',e=>{ setTimeout(()=>{ const pg=document.getElementById('page-stock'); const a=document.activeElement; if(STK._pend&&pg&&pg.classList.contains('active')&&!(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName))) stkRender(); },250); });
 
@@ -13439,7 +13459,7 @@ function stkSetDate(d){ const od=STK.set.openDate,t=lvTodayISO(); if(!d) return;
 function stkShift(n){ stkSetDate(stayAddDays(STK.date,n)); }
 function stkSheetHtml(){
   const L=stkLedger(), d=STK.date, t=lvTodayISO(), od=STK.set.openDate, canE=stkCanEdit(d), money=stkMoney();
-  const day=L.day[d]||{rec:{},buyAmt:0,foodCost:0}, stu=stkStu(d);
+  const day=L.day[d]||{rec:{},buyAmt:0,foodCost:0,personCost:0}, hd=stkHeads(d), pc=day.personCost||0;
   const missing=L.dates.filter(x=>x<=t&&!L.day[x].entered);
   let h=`<div class="stk-nav"><button class="stk-btn2" onclick="stkShift(-1)" ${d<=od?'disabled':''}>◀</button>
     <input type="date" class="stk-in" value="${d}" min="${od}" max="${t}" onchange="stkSetDate(this.value)">
@@ -13447,10 +13467,8 @@ function stkSheetHtml(){
     <button class="stk-btn2" onclick="stkSetDate('${t}')">আজ</button></div>
     <div style="margin:-4px 18px 8px;font-size:11.5px;color:#6b7a86;font-weight:600;">${stayFmt(d)}${canE?'':' • 🔒 শুধু দেখা যাবে'}</div>`;
   if(missing.length&&stkLevel()!=='view') h+=`<div class="stk-warn" onclick="stkSetDate('${missing[0]}')" style="cursor:pointer;">⚠️ এন্ট্রি বাকি: ${missing.slice(0,6).map(stayShort).join(', ')}${missing.length>6?' ... (মোট '+bnDigits(missing.length)+' দিন)':''} — ট্যাপ করে প্রথমটিতে যান</div>`;
-  const perStu=stu.n?day.foodCost/stu.n:0;
-  h+=`<div class="stk-sum">`+(money?`<div><b>${stkM(day.buyAmt)}</b><span>আজকের ক্রয়</span></div><div><b>${stkM(day.foodCost)}</b><span>খাদ্য ব্যবহারের মূল্য</span></div>`:'')+
-    `<div><b><input type="number" min="0" id="stk-stu" class="stk-in" style="text-align:center;font-weight:700;padding:3px;" value="${stu.n}" ${canE?'':'disabled'} onchange="stkSaveStu(this.value)"></b><span>খাওয়ার ছাত্র${stu.est?' (আনুমানিক)':''}</span></div>`+
-    (money?`<div><b>${stu.n?stkM(perStu):'—'}</b><span>ছাত্রপ্রতি খাদ্যখরচ</span></div>`:'')+`</div>`;
+  h+=`<div class="stk-sum">`+(money?`<div><b>${stkM(day.buyAmt)}</b><span>আজকের ক্রয়</span></div><div><b>${stkM(pc)}</b><span>ব্যবহারের মূল্য (খাদ্য + পরিষ্কার)</span></div>`:'')+
+    `<div><b>${bnDigits(hd.total)}</b><span>মোট জন${hd.est?' (আনুমানিক)':''}</span></div>`+(money?`<div><b>${hd.total&&pc?stkM(pc/hd.total):'—'}</b><span>জনপ্রতি খরচ</span></div>`:'')+`</div>`+stkHeadsCard(d,canE);
   const cats=[['all','সব']].concat(Object.entries(STK_CATS));
   h+=`<div class="stk-chips">${cats.map(c=>`<span class="stk-chip ${STK.cat===c[0]?'on':''}" onclick="STK.cat='${c[0]}';stkRender()">${c[1]}</span>`).join('')}</div>
     <div style="display:flex;gap:8px;margin:0 16px 10px;"><input class="stk-in" id="stk-q" placeholder="আইটেম খুঁজুন" value="${stkE(STK.q)}" oninput="STK.q=this.value;stkRefreshList()">
@@ -13483,11 +13501,6 @@ function stkListHtml(){
   return out||`<div style="text-align:center;padding:26px;color:#8b98a3;font-size:12.5px">কোনো আইটেম নেই${STK.all?'':' — "সব আইটেম" চাপলে সব দেখা যাবে'}</div>`;
 }
 function stkToggle(id){ STK.open=(STK.open===id)?null:id; stkRefreshList(); }
-function stkSaveStu(v){
-  const d=STK.date; if(!stkCanEdit(d)){ alert('এই তারিখ সম্পাদনার অনুমতি নেই।'); return; }
-  const n=Math.max(0,Math.round(+v||0)); if(!STK.days[d]) STK.days[d]={}; STK.days[d].stu=n||null; if(!n) delete STK.days[d].stu;
-  STK._L=null; stkPut('stockDays/'+d+'/stu',n||null); stkLog('ছাত্রসংখ্যা',d+': '+n); stkRender();
-}
 function stkSaveUse(id){
   const d=STK.date; if(!stkCanEdit(d)){ alert('এই তারিখ সম্পাদনার অনুমতি নেই।'); return; }
   const o={}; let any=false;
@@ -13496,41 +13509,56 @@ function stkSaveUse(id){
   if(bad){ alert('এই পরিমাণ খরচ ধরলে "'+STK.items[id].name+'"-এর মজুদ '+stayFmt(bad)+' তারিখে ঋণাত্মক হয়ে যাবে। পরিমাণ যাচাই করুন।'); return; }
   stkPut('stockDays/'+d+'/use/'+id,any?o:null); stkLog('খরচ',d+' • '+STK.items[id].name+': '+JSON.stringify(o)); STK.open=null; stkRender();
 }
-function stkGoBuy(id){ STK.pf.item=STK.items[id].name; STK.tab='buy'; stkRender(); window.scrollTo(0,0); }
+function stkGoBuy(id){ const pb=stkPbGet(); if(!pb.rows.some(r=>r.id===id)) pb.rows.push({id,q:0,r:+(stkLedger().final[id]||{}).r||0,t:0}); stkPkClose(); STK.tab='buy'; stkRender(); window.scrollTo(0,0); }
 function stkGoAdj(id){ STK.pf.aitem=STK.items[id].name; STK.tab='adj'; stkRender(); window.scrollTo(0,0); }
 
 // ───── ট্যাব ২: ক্রয় ─────
 function stkItemDL(){ return `<datalist id="stk-dl">${stkIds(false).map(id=>`<option value="${stkE(STK.items[id].name)}"></option>`).join('')}</datalist>`; }
 function stkByName(nm){ nm=(nm||'').trim(); const ids=stkIds(true); return ids.find(id=>STK.items[id].name===nm)||null; }
 function stkSuppliers(){ const s=new Set(); Object.values(STK.days).forEach(dd=>Object.values(dd.buy||{}).forEach(p=>{ if(p.sup) s.add(p.sup); })); return [...s]; }
+function stkPbGet(){ return STK.pb||(STK.pb={rows:[],sup:'',bill:'',date:null}); }
+const stkR2=x=>Math.round((+x||0)*100)/100;
 function stkBuyHtml(){
-  const d=STK.date, t=lvTodayISO(), od=STK.set.openDate, pf=STK.pf, canE=stkCanEdit(d);
-  if(!STK.pm) STK.pm=d.slice(0,7);
-  return `<div class="stk-card"><div class="stk-h">🛒 নতুন ক্রয় এন্ট্রি</div>
-    <label class="stk-lbl">তারিখ</label><input type="date" class="stk-in" id="stk-p-date" value="${d}" min="${od}" max="${t}" onchange="STK.date=this.value">
-    <label class="stk-lbl">আইটেম (নাম লিখুন বা বেছে নিন)</label><input class="stk-in" id="stk-p-item" list="stk-dl" value="${stkE(pf.item||'')}" oninput="STK.pf.item=this.value;stkPUnit()" autocomplete="off">${stkItemDL()}
-    <div class="stk-2"><div><label class="stk-lbl">পরিমাণ <span id="stk-p-unit" style="color:#8b98a3"></span></label><input type="number" step="any" min="0" inputmode="decimal" class="stk-in" id="stk-p-qty"></div>
-    <div><label class="stk-lbl">মোট মূল্য (৳)</label><input type="number" step="any" min="0" inputmode="decimal" class="stk-in" id="stk-p-amt"></div></div>
-    <div class="stk-2"><div><label class="stk-lbl">সরবরাহকারী / দোকান</label><input class="stk-in" id="stk-p-sup" list="stk-dl2" value="${stkE(pf.sup||'')}" oninput="STK.pf.sup=this.value"><datalist id="stk-dl2">${stkSuppliers().map(s=>`<option value="${stkE(s)}">`).join('')}</datalist></div>
-    <div><label class="stk-lbl">বিল / মেমো নং</label><input class="stk-in" id="stk-p-bill" value="${stkE(pf.bill||'')}" oninput="STK.pf.bill=this.value"></div></div>
-    <button class="stk-btn stk-btng" style="width:100%;margin-top:12px" onclick="stkAddBuy()">➕ ক্রয় যোগ করুন</button>
-    <div class="stk-info">একই বিলের একাধিক আইটেম দিতে সরবরাহকারী ও বিল নং একবার দিলেই চলবে — যোগের পর সেগুলো থেকে যায়।</div></div>
+  const pb=stkPbGet(), d=pb.date||STK.date, t=lvTodayISO(), od=STK.set.openDate; if(!STK.pm) STK.pm=d.slice(0,7);
+  return `<div class="stk-card"><div class="stk-h">🛒 ক্রয়ের তালিকা তৈরি করুন</div>
+    <div class="stk-2"><div><label class="stk-lbl">তারিখ</label><input type="date" class="stk-in" value="${d}" min="${od}" max="${t}" onchange="stkPbGet().date=this.value"></div>
+    <div><label class="stk-lbl">বিল / মেমো নং</label><input class="stk-in" value="${stkE(pb.bill)}" oninput="stkPbGet().bill=this.value"></div></div>
+    <label class="stk-lbl">সরবরাহকারী / দোকান</label><input class="stk-in" list="stk-dl2" value="${stkE(pb.sup)}" oninput="stkPbGet().sup=this.value"><datalist id="stk-dl2">${stkSuppliers().map(s=>`<option value="${stkE(s)}">`).join('')}</datalist>
+    <button class="stk-btn" style="width:100%;margin-top:10px" onclick="stkOpenPicker('buy')">➕ সব পণ্যের তালিকা থেকে বেছে নিন</button>
+    <div id="stk-pb-rows">${stkPbRowsHtml()}</div></div>
     <div id="stk-buylist">${stkBuyListHtml()}</div>`;
 }
-function stkPUnit(){ const id=stkByName(document.getElementById('stk-p-item').value), el=document.getElementById('stk-p-unit'); if(el) el.textContent=id?'('+STK.items[id].unit+')':''; }
-function stkAddBuy(){
-  const d=document.getElementById('stk-p-date').value, id=stkByName(document.getElementById('stk-p-item').value);
-  const qty=+document.getElementById('stk-p-qty').value, amtRaw=document.getElementById('stk-p-amt').value, amt=amtRaw===''?0:+amtRaw;
-  if(!stkCanEdit(d)){ alert('এই তারিখে এন্ট্রির অনুমতি নেই।'); return; }
-  if(!id){ alert('তালিকা থেকে সঠিক আইটেম বেছে নিন। না থাকলে "আইটেম" ট্যাবে যোগ করুন।'); return; }
-  if(!(qty>0)){ alert('পরিমাণ লিখুন'); return; }
-  if(amt<0||isNaN(amt)){ alert('মূল্য সঠিক নয়'); return; }
-  if(amtRaw===''&&!confirm('মূল্য ছাড়া ক্রয় যোগ করবেন? (ব্যয়ের হিসাবে ০ ধরা হবে)')) return;
-  const pid=stkId('p'), u=stkUser(), e={item:id,qty:stkR(qty),amt:Math.round(amt*100)/100,sup:(document.getElementById('stk-p-sup').value||'').trim(),bill:(document.getElementById('stk-p-bill').value||'').trim(),by:u.roleLabel||u.role||'',at:Date.now()};
-  if(!STK.days[d]) STK.days[d]={}; STK.days[d].buy=STK.days[d].buy||{}; STK.days[d].buy[pid]=e; STK._L=null;
-  stkPut('stockDays/'+d+'/buy/'+pid,e); stkLog('ক্রয়',d+' • '+STK.items[id].name+' '+e.qty+' '+STK.items[id].unit+' ৳'+e.amt+(e.bill?' • বিল '+e.bill:''));
-  STK.date=d; STK.pf.item=''; stkRender();
-  const el=document.getElementById('stk-p-item'); if(el) el.focus();
+function stkPbRowsHtml(){
+  const pb=stkPbGet(); if(!pb.rows.length) return '<div class="stk-info" style="text-align:center;padding:12px 0">কোনো পণ্য যোগ হয়নি। উপরের বোতামে চেপে এক বা একাধিক পণ্য বাছুন, তারপর পরিমাণ ও দর লিখুন।</div>';
+  return pb.rows.map((r,i)=>{ const it=STK.items[r.id]; if(!it) return ''; const lr=(stkLedger().final[r.id]||{}).r;
+    return `<div class="stk-row" style="margin:8px 0 0"><div class="stk-rh" style="cursor:default"><div><div class="stk-nm">${stkE(it.name)}</div><div class="stk-sub">${stkE(it.unit)}${lr>0?' • সর্বশেষ দর '+stkM(lr)+'/'+stkE(it.unit):''}</div></div><span style="color:#c94545;cursor:pointer;padding:4px 8px" onclick="stkPbDel(${i})">✕</span></div>
+      <div class="stk-meals" style="grid-template-columns:1fr 1fr 1fr;padding:0 12px 10px"><label>পরিমাণ<input type="number" step="any" min="0" inputmode="decimal" id="pb-q-${i}" value="${r.q||''}" oninput="stkPbIn(${i},'q',this.value)"></label>
+      <label>দর/${stkE(it.unit)} (৳)<input type="number" step="any" min="0" inputmode="decimal" id="pb-r-${i}" value="${r.r||''}" oninput="stkPbIn(${i},'r',this.value)"></label>
+      <label>মোট (৳)<input type="number" step="any" min="0" inputmode="decimal" id="pb-t-${i}" value="${r.t||''}" oninput="stkPbIn(${i},'t',this.value)"></label></div></div>`; }).join('')+
+    `<div class="stk-card" style="margin:10px 0 0;background:#faf8f2"><div class="stk-li" style="border:none"><b id="stk-pb-cnt">মোট ${bnDigits(pb.rows.filter(r=>r.q>0).length)}টি পণ্য</b><b id="stk-pb-tot" style="font-size:15px;color:#a9822f">${stkM(pb.rows.reduce((s,r)=>s+(+r.t||0),0))}</b></div>
+    <div class="stk-eb"><button class="stk-btn stk-btng" style="flex:1" onclick="stkSavePb()">💾 সব একসাথে সংরক্ষণ</button><button class="stk-btn2" onclick="stkPbClear()">তালিকা খালি</button></div></div>`;
+}
+function stkPbIn(i,k,v){
+  const r=stkPbGet().rows[i]; if(!r) return; const x=v===''?0:+v;
+  if(k==='q'){ r.q=x; if(r.r>0) r.t=stkR2(x*r.r); else if(r.t>0&&x>0) r.r=r.t/x; }
+  else if(k==='r'){ r.r=x; r.t=stkR2(r.q*x); }
+  else { r.t=x; r.r=r.q>0?x/r.q:0; }
+  const set=(id,val)=>{ const el=document.getElementById(id+i); if(el) el.value=val?String(val):''; };
+  if(k!=='t') set('pb-t-',r.t); if(k==='t') set('pb-r-',stkR(r.r)); if(k==='q') set('pb-r-',stkR(r.r));
+  const tot=document.getElementById('stk-pb-tot'); if(tot) tot.textContent=stkM(stkPbGet().rows.reduce((s,x2)=>s+(+x2.t||0),0));
+  const cnt=document.getElementById('stk-pb-cnt'); if(cnt) cnt.textContent='মোট '+bnDigits(stkPbGet().rows.filter(x2=>x2.q>0).length)+'টি পণ্য';
+}
+function stkPbDel(i){ stkPbGet().rows.splice(i,1); const el=document.getElementById('stk-pb-rows'); if(el) el.innerHTML=stkPbRowsHtml(); }
+function stkPbClear(){ if(!confirm('পুরো তালিকা খালি করবেন?')) return; stkPbGet().rows=[]; const el=document.getElementById('stk-pb-rows'); if(el) el.innerHTML=stkPbRowsHtml(); }
+function stkSavePb(){
+  const pb=stkPbGet(), d=pb.date||STK.date; if(!stkCanEdit(d)){ alert('এই তারিখে এন্ট্রির অনুমতি নেই।'); return; }
+  const rows=pb.rows.filter(r=>STK.items[r.id]&&r.q>0); if(!rows.length){ alert('কোনো পণ্যের পরিমাণ লেখা হয়নি'); return; }
+  if(rows.some(r=>!(r.t>0))&&!confirm('কিছু পণ্যের মূল্য দেওয়া হয়নি — মূল্য ছাড়াই সংরক্ষণ করবেন? (ব্যয়ের হিসাবে ০ ধরা হবে)')) return;
+  const u=stkUser(), bid=stkId('b'); let total=0;
+  if(!STK.days[d]) STK.days[d]={}; STK.days[d].buy=STK.days[d].buy||{};
+  rows.forEach(r=>{ const pid=stkId('p'), e={item:r.id,qty:stkR(r.q),amt:stkR2(r.t),sup:(pb.sup||'').trim(),bill:(pb.bill||'').trim(),batch:bid,by:u.roleLabel||u.role||'',at:Date.now()}; STK.days[d].buy[pid]=e; total+=e.amt; stkPut('stockDays/'+d+'/buy/'+pid,e); });
+  STK._L=null; stkLog('ক্রয় (একসাথে)',d+' • '+rows.length+'টি পণ্য ৳'+stkR2(total)+(pb.bill?' • বিল '+pb.bill:'')+(pb.sup?' • '+pb.sup:''));
+  STK.flash='✅ '+bnDigits(rows.length)+'টি পণ্যের ক্রয় সংরক্ষিত — মোট '+stkM(total); pb.rows=[]; pb.bill=''; STK.date=d; stkRender();
 }
 function stkBuyList(){
   const out=[]; const q=STK.pq.trim().toLowerCase();
@@ -13553,6 +13581,195 @@ function stkDelBuy(d,pid){
   if(bad){ alert('এই ক্রয় মুছলে "'+it.name+'"-এর মজুদ '+stayFmt(bad)+' তারিখে ঋণাত্মক হয়ে যাবে। আগে ওই দিনের খরচ ঠিক করুন।'); return; }
   stkPut('stockDays/'+d+'/buy/'+pid,null); stkLog('ক্রয় মোছা',d+' • '+it.name+' '+p.qty+' ৳'+p.amt+(p.bill?' • বিল '+p.bill:'')); stkRender();
 }
+
+
+// ───── বহুআইটেম বাছাই (Picker) ─────
+function stkOpenPicker(kind){ STK.pk={kind,q:'',cat:'all',sel:{}}; stkPkRender(); }
+function stkPkClose(){ const o=document.getElementById('stk-pk'); if(o) o.remove(); STK.pk=null; }
+function stkPkCount(){ return Object.keys(STK.pk.sel).filter(k=>STK.pk.sel[k]).length; }
+function stkPkLabel(){ const n=stkPkCount(); return n?('✅ '+bnDigits(n)+'টি পণ্য যোগ করুন'):'পণ্য বাছুন'; }
+function stkPkListHtml(){
+  const pk=STK.pk, q=pk.q.trim().toLowerCase(), L=stkLedger(); let out='',last='';
+  const taken=id=>pk.kind==='buy'?stkPbGet().rows.some(r=>r.id===id):pk.kind==='use'?stkCbGet().rows.some(r=>r.id===id&&r.meal===stkCbGet().meal):(STK.me&&id in STK.me.items);
+  stkIds(false).forEach(id=>{ const it=STK.items[id]; if(pk.cat!=='all'&&it.cat!==pk.cat) return; if(q&&!it.name.toLowerCase().includes(q)) return;
+    if(it.cat!==last){ last=it.cat; out+=`<div class="stk-cat">${STK_CATS[it.cat]||''}</div>`; }
+    const f=L.final[id]||{q:0}, tk=taken(id);
+    out+=`<label class="stk-li" style="margin:0 16px;align-items:center;cursor:pointer;${tk?'opacity:.5':''}"><span><b>${stkE(it.name)}</b><br><span style="color:#8b98a3;font-size:10.5px">${stkE(it.unit)} • মজুদ ${stkN(f.q)}${tk?' • যোগ করা আছে':''}</span></span><input type="checkbox" ${pk.sel[id]?'checked':''} ${tk?'disabled':''} onchange="stkPkTog('${id}',this.checked)" style="width:22px;height:22px"></label>`; });
+  return out||'<div style="text-align:center;padding:24px;color:#8b98a3;font-size:12.5px">কোনো পণ্য পাওয়া যায়নি</div>';
+}
+function stkPkList(){ const el=document.getElementById('stk-pk-list'); if(el) el.innerHTML=stkPkListHtml(); }
+function stkPkTog(id,on){ STK.pk.sel[id]=!!on; const b=document.getElementById('stk-pk-ok'); if(b) b.textContent=stkPkLabel(); }
+function stkPkRender(){
+  const pk=STK.pk; if(!pk) return; let ov=document.getElementById('stk-pk');
+  if(!ov){ ov=document.createElement('div'); ov.id='stk-pk'; ov.style.cssText='position:fixed;left:0;right:0;top:0;bottom:0;z-index:60;background:#faf8f2;overflow-y:auto;'; document.getElementById('page-stock').appendChild(ov); }
+  const cats=[['all','সব']].concat(Object.entries(STK_CATS));
+  ov.innerHTML=`<div style="position:sticky;top:0;background:#faf8f2;padding:12px 16px 6px;z-index:2;border-bottom:1px solid #e2dbc7">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b style="font-size:14px;color:#24313b">${pk.kind==='buy'?'🛒 ক্রয়ের পণ্য বাছুন':pk.kind==='use'?'🧾 খরচের পণ্য বাছুন':'🍽️ মেনুর পণ্য বাছুন'}</b><button class="stk-btn2" onclick="stkPkClose()">✕ বন্ধ</button></div>
+    <input class="stk-in" id="stk-pk-q" placeholder="পণ্য খুঁজুন" value="${stkE(pk.q)}" oninput="STK.pk.q=this.value;stkPkList()" autocomplete="off">
+    <div class="stk-chips" style="padding:8px 0 4px">${cats.map(c=>`<span class="stk-chip ${pk.cat===c[0]?'on':''}" onclick="STK.pk.cat='${c[0]}';stkPkRender()">${c[1]}</span>`).join('')}</div></div>
+    <div id="stk-pk-list" style="padding:8px 0 90px">${stkPkListHtml()}</div>
+    <div style="position:fixed;left:0;right:0;bottom:0;padding:10px 16px;background:#fff;border-top:1px solid #e2dbc7;z-index:3"><button class="stk-btn stk-btng" style="width:100%" id="stk-pk-ok" onclick="stkPkOk()">${stkPkLabel()}</button></div>`;
+}
+function stkPkOk(){
+  const pk=STK.pk; if(!pk) return; const ids=Object.keys(pk.sel).filter(k=>pk.sel[k]);
+  if(!ids.length){ alert('কোনো পণ্য বাছাই করা হয়নি'); return; }
+  if(pk.kind==='buy'){ const pb=stkPbGet(), L=stkLedger(); ids.forEach(id=>{ if(!pb.rows.some(r=>r.id===id)) pb.rows.push({id,q:0,r:+(L.final[id]||{}).r||0,t:0}); }); }
+  else if(pk.kind==='use'){ const cb=stkCbGet(); ids.forEach(id=>{ if(!cb.rows.some(r=>r.id===id&&r.meal===cb.meal)) cb.rows.push({id,meal:cb.meal,qty:0}); }); }
+  else if(pk.kind==='menu'&&STK.me){ ids.forEach(id=>{ if(!(id in STK.me.items)) STK.me.items[id]=''; }); }
+  stkPkClose(); stkRender();
+}
+
+// ───── ট্যাব: খরচ (একসাথে অনেক পণ্য) ─────
+function stkCbGet(){ return STK.cb||(STK.cb={rows:[],meal:'l'}); }
+function stkUnitCost(id,d){ const L=stkLedger(), r=(L.day[d]||{rec:{}}).rec[id]; if(r&&r.av!=null) return r.av; const f=L.final[id]; return f?(f.q>0?f.v/f.q:f.r):0; }
+function stkTryMany(date,ids,mut){
+  const before=JSON.stringify(STK.days[date]||null);
+  if(!STK.days[date]) STK.days[date]={}; mut(STK.days[date]); STK._L=null;
+  const L=stkLedger(); let bad=null;
+  outer: for(const id of ids){ for(const d of L.dates){ const r=L.day[d].rec[id]; if(r&&r.c<-1e-6){ bad={d,id}; break outer; } } }
+  if(bad){ const old=JSON.parse(before); if(old===null) delete STK.days[date]; else STK.days[date]=old; STK._L=null; }
+  return bad;
+}
+function stkMealCosts(d){
+  const L=stkLedger(), rec=(L.day[d]||{rec:{}}).rec, out=STK_MEALS.map(()=>0);
+  Object.keys(rec).forEach(id=>{ if(!(STK.items[id].cat in STK_PERSON)) return; rec[id].mu.forEach((q,i)=>{ out[i]+=q*rec[id].av; }); });
+  return out;
+}
+function stkUseHtml(){
+  const cb=stkCbGet(), d=STK.date, t=lvTodayISO(), od=STK.set.openDate, canE=stkCanEdit(d);
+  return `<div class="stk-nav"><button class="stk-btn2" onclick="stkShift(-1)" ${d<=od?'disabled':''}>◀</button><input type="date" class="stk-in" value="${d}" min="${od}" max="${t}" onchange="stkSetDate(this.value)"><button class="stk-btn2" onclick="stkShift(1)" ${d>=t?'disabled':''}>▶</button><button class="stk-btn2" onclick="stkSetDate('${t}')">আজ</button></div>
+    <div class="stk-card"><div class="stk-h">🧾 খরচের তালিকা — ${stayFmt(d)}${canE?'':' 🔒'}</div>
+    <label class="stk-lbl">নতুন পণ্য কোন বেলার জন্য যোগ হবে</label>
+    <div class="stk-chips" style="padding:0 0 6px">${STK_MEALS.map(m=>`<span class="stk-chip ${cb.meal===m[0]?'on':''}" onclick="stkCbGet().meal='${m[0]}';stkRender()">${m[1]}</span>`).join('')}</div>
+    <button class="stk-btn" style="width:100%" onclick="stkOpenPicker('use')" ${canE?'':'disabled'}>➕ সব পণ্যের তালিকা থেকে বেছে নিন</button>
+    <div id="stk-cb-rows">${stkCbRowsHtml()}</div></div>
+    ${stkAcctHtml(d)}`;
+}
+function stkCbTotHtml(){
+  const cb=stkCbGet(), d=STK.date, L=stkLedger(), dd=L.day[d]||{personCost:0}, rec=(L.day[d]||{rec:{}}).rec; let add=0,all=0;
+  cb.rows.forEach(r=>{ const it=STK.items[r.id]; if(!it||!(r.qty>0)) return; const uc=stkUnitCost(r.id,d), mi=STK_MEALS.findIndex(m=>m[0]===r.meal), prev=rec[r.id]?rec[r.id].mu[mi]:0, c=r.qty*uc; all+=c; if(it.cat in STK_PERSON) add+=c-prev*uc; });
+  const h=stkHeads(d), pcost=(dd.personCost||0)+add;
+  return stkMoney()?`এই তালিকার মূল্য ≈ <b>${stkM(all)}</b><br>সংরক্ষণের পর আজকের মোট (খাদ্য + পরিষ্কার) ≈ <b>${stkM(pcost)}</b>${h.total?' • জনপ্রতি ≈ <b style="color:#a9822f">'+stkM(pcost/h.total)+'</b>':''}`:'';
+}
+function stkCbRowsHtml(){
+  const cb=stkCbGet(), d=STK.date, rec=(stkLedger().day[d]||{rec:{}}).rec;
+  if(!cb.rows.length) return '<div class="stk-info" style="text-align:center;padding:12px 0">কোনো পণ্য যোগ হয়নি। "পণ্য বেছে নিন" চাপুন, অথবা পরিকল্পনা ট্যাব থেকে এক চাপে নিয়ে আসুন।</div>';
+  return cb.rows.map((r,i)=>{ const it=STK.items[r.id]; if(!it) return ''; const mi=STK_MEALS.findIndex(m=>m[0]===r.meal), x=rec[r.id], prev=x?x.mu[mi]:0;
+    return `<div class="stk-row" style="margin:8px 0 0"><div class="stk-rh" style="cursor:default"><div><div class="stk-nm">${stkE(it.name)}</div><div class="stk-sub">${stkE(it.unit)}${x?' • মজুদ '+stkN(x.o+x.bq+x.aq):''}${prev?' • <span class="stk-low">এই বেলায় আগে '+stkN(prev)+' ছিল (বদলে যাবে)</span>':''}</div></div><span style="color:#c94545;cursor:pointer;padding:4px 8px" onclick="stkCbDel(${i})">✕</span></div>
+      <div class="stk-2" style="padding:0 12px 10px"><select class="stk-in" onchange="stkCbIn(${i},'meal',this.value)">${STK_MEALS.map(m=>`<option value="${m[0]}" ${m[0]===r.meal?'selected':''}>${m[1]}</option>`).join('')}</select><input type="number" step="any" min="0" inputmode="decimal" class="stk-in" placeholder="পরিমাণ (${stkE(it.unit)})" value="${r.qty||''}" oninput="stkCbIn(${i},'qty',this.value)"></div></div>`; }).join('')+
+    `<div class="stk-card" style="margin:10px 0 0;background:#faf8f2"><div id="stk-cb-tot" style="font-size:12px;line-height:1.8;color:#34444f">${stkCbTotHtml()}</div><div class="stk-eb"><button class="stk-btn stk-btng" style="flex:1" onclick="stkSaveCb()">💾 সব একসাথে সংরক্ষণ</button><button class="stk-btn2" onclick="stkCbClear()">তালিকা খালি</button></div></div>`;
+}
+function stkCbRefresh(){ const el=document.getElementById('stk-cb-rows'); if(el) el.innerHTML=stkCbRowsHtml(); }
+function stkCbIn(i,k,v){ const r=stkCbGet().rows[i]; if(!r) return; if(k==='qty'){ r.qty=v===''?0:+v; const el=document.getElementById('stk-cb-tot'); if(el) el.innerHTML=stkCbTotHtml(); } else { r.meal=v; stkCbRefresh(); } }
+function stkCbDel(i){ stkCbGet().rows.splice(i,1); stkCbRefresh(); }
+function stkCbClear(){ if(!confirm('পুরো তালিকা খালি করবেন?')) return; stkCbGet().rows=[]; stkCbRefresh(); }
+function stkSaveCb(){
+  const cb=stkCbGet(), d=STK.date; if(!stkCanEdit(d)){ alert('এই তারিখে এন্ট্রির অনুমতি নেই।'); return; }
+  const rows=cb.rows.filter(r=>STK.items[r.id]&&r.qty>0); if(!rows.length){ alert('কোনো পণ্যের পরিমাণ লেখা হয়নি'); return; }
+  const byItem={}; rows.forEach(r=>{ const o=byItem[r.id]||(byItem[r.id]={}); o[r.meal]=stkR((o[r.meal]||0)+r.qty); });
+  const ids=Object.keys(byItem), merged={};
+  ids.forEach(id=>{ const cur=Object.assign({},((STK.days[d]||{}).use||{})[id]||{}); Object.assign(cur,byItem[id]); Object.keys(cur).forEach(k=>{ if(!(cur[k]>0)) delete cur[k]; }); merged[id]=cur; });
+  const bad=stkTryMany(d,ids,doc=>{ doc.use=doc.use||{}; ids.forEach(id=>{ if(Object.keys(merged[id]).length) doc.use[id]=merged[id]; else delete doc.use[id]; }); });
+  if(bad){ alert('"'+STK.items[bad.id].name+'"-এর মজুদ '+stayFmt(bad.d)+' তারিখে ঋণাত্মক হয়ে যাবে — পরিমাণ কমান।'); return; }
+  ids.forEach(id=>stkPut('stockDays/'+d+'/use/'+id,merged[id]));
+  stkLog('খরচ (একসাথে)',d+' • '+ids.length+'টি পণ্য'); cb.rows=[];
+  const dd=stkLedger().day[d]||{}, h=stkHeads(d);
+  STK.flash='✅ '+bnDigits(ids.length)+'টি পণ্যের খরচ সংরক্ষিত'+(stkMoney()?' — আজকের মোট ব্যয় '+stkM(dd.personCost||0)+(h.total&&dd.personCost?', জনপ্রতি '+stkM(dd.personCost/h.total):''):''); stkRender();
+}
+function stkAcctHtml(d){
+  const L=stkLedger(), dd=L.day[d]; if(!dd) return ''; const h=stkHeads(d), mc=stkMealCosts(d), money=stkMoney(), canE=stkCanEdit(d);
+  return `<div class="stk-card"><div class="stk-h">📊 ${stayShort(d)} — দিনের হিসাব</div>`+(money?
+    `<div class="stk-li"><span>খাদ্য সামগ্রীর ব্যয়</span><b>${stkM(dd.foodCost)}</b></div><div class="stk-li"><span>পরিষ্কার সামগ্রীর ব্যয়</span><b>${stkM(dd.cleanCost)}</b></div>`+
+    STK_MEALS.map((m,i)=>mc[i]?`<div class="stk-li" style="color:#6b7a86"><span>— ${m[1]} বেলার ব্যয়</span><span>${stkM(mc[i])}</span></div>`:'').join('')+
+    `<div class="stk-li"><span><b>মোট ব্যয় (খাদ্য + পরিষ্কার)</b></span><b>${stkM(dd.personCost)}</b></div>
+     <div class="stk-li"><span>খাওয়ার মোট জন<br><span style="color:#8b98a3;font-size:10.5px">ছাত্র ${bnDigits(h.stu)} • শিক্ষক ${bnDigits(h.tea)} • কর্মচারী ${bnDigits(h.stf)} • মেহমান ${bnDigits(h.gst)}</span></span><b>${bnDigits(h.total)}${h.est?' *':''}</b></div>
+     <div class="stk-li"><span><b>জনপ্রতি খরচ</b></span><b style="color:#a9822f;font-size:16px">${h.total&&dd.personCost?stkM(dd.personCost/h.total):'—'}</b></div>`+
+    (h.stu&&dd.personCost?`<div class="stk-li" style="color:#6b7a86"><span>শুধু ছাত্রসংখ্যা দিয়ে ভাগ করলে</span><span>${stkM(dd.personCost/h.stu)}</span></div>`:''):'<div class="stk-info">টাকার হিসাব দেখার অনুমতি নেই</div>')+
+    (canE?stkHeadsCard(d,true):'')+`<div class="stk-info">* ছাত্রসংখ্যা আনুমানিক হলে উপরের ঘরে সঠিক সংখ্যা দিন। মূল্য ভারযুক্ত গড় দামে হিসাব হয়।</div></div>`;
+}
+
+// ───── ট্যাব: পরিকল্পনা (মেনু অনুযায়ী জনপ্রতি রেশন) ─────
+function stkSmall(unit){ return unit==='কেজি'?{u:'গ্রাম',f:1000}:unit==='লিটার'?{u:'মিলি',f:1000}:{u:unit,f:1}; }
+function stkPlanDate(){ return STK.pd||(STK.pd=lvTodayISO()); }
+function stkSetPD(v){ if(!v) return; STK.pd=v; stkRender(); }
+function stkActiveMenus(){ return Object.entries(STK.menus||{}).filter(([k,x])=>x&&x.on!==0); }
+function stkPlanOf(d,k){ const p=((STK.days[d]||{}).plan||{})[k]; return p||{m:'',g:'1111'}; }
+function stkPlanSet(k,field,v){
+  const d=stkPlanDate(); if(!stkCanPlan(d)){ alert('অনুমতি নেই'); return; }
+  if(!STK.days[d]) STK.days[d]={}; STK.days[d].plan=STK.days[d].plan||{};
+  const p=STK.days[d].plan[k]=Object.assign({m:'',g:'1111'},STK.days[d].plan[k]||{}); p[field]=v; STK._L=null;
+  stkPut('stockDays/'+d+'/plan/'+k,p); stkRender();
+}
+function stkPlanGrp(k,i,on){ const g=(stkPlanOf(stkPlanDate(),k).g||'1111').split(''); g[i]=on?'1':'0'; stkPlanSet(k,'g',g.join('')); }
+function stkPlanCalc(d){
+  const doc=STK.days[d]||{}, h=stkHeads(d), L=stkLedger(), rec=(L.day[d]||{rec:null}).rec, map={};
+  STK_MEALS.forEach(([k])=>{ const p=(doc.plan||{})[k]; if(!p||!p.m||!STK.menus[p.m]) return; const g=p.g||'1111'; let n=0; STK_GROUPS.forEach((gr,i)=>{ if(g[i]==='1') n+=h[gr[0]]; });
+    Object.entries(STK.menus[p.m].items||{}).forEach(([id,pp])=>{ if(!STK.items[id]||!(+pp>0)) return; const q=pp*n, o=map[id]||(map[id]={by:{},need:0}); o.by[k]=(o.by[k]||0)+q; o.need+=q; }); });
+  let total=0; const ord=Object.keys(STK_CATS);
+  const rows=Object.keys(map).map(id=>{ const o=map[id], r=rec&&rec[id], f=L.final[id]||{q:0,v:0,r:0}, avail=r?stkR(r.o+r.bq+r.aq):f.q, uc=f.q>0?f.v/f.q:f.r, cost=o.need*uc; total+=cost;
+    return {id,it:STK.items[id],by:o.by,need:o.need,avail,short:Math.max(0,o.need-avail),cost}; })
+    .sort((a,b)=>(ord.indexOf(a.it.cat)-ord.indexOf(b.it.cat))||((a.it.no||0)-(b.it.no||0)));
+  return {rows,total,h};
+}
+function stkPlanHtml(){
+  const d=stkPlanDate(), t=lvTodayISO(), canP=stkCanPlan(d), menus=stkActiveMenus(), h=stkHeads(d), pc=stkPlanCalc(d), money=stkMoney();
+  let out=`<div class="stk-card"><div class="stk-h">🧮 রেশন পরিকল্পনা</div><label class="stk-lbl">কোন দিনের জন্য</label><input type="date" class="stk-in" value="${d}" min="${stayAddDays(t,-1)}" max="${stayAddDays(t,1)}" onchange="stkSetPD(this.value)"><div class="stk-info">${stayFmt(d)}${canP?'':' • 🔒'} — মেনু বেছে নিলে কত পরিমাণ লাগবে নিজে হিসাব হবে।</div></div>`+stkHeadsCard(d,canP);
+  out+=STK_MEALS.map(([k,l])=>{ const p=stkPlanOf(d,k), g=p.g||'1111', n=STK_GROUPS.reduce((s,gr,i)=>s+(g[i]==='1'?h[gr[0]]:0),0);
+    return `<div class="stk-card" style="margin-bottom:8px"><div class="stk-h">${l}</div><select class="stk-in" ${canP?'':'disabled'} onchange="stkPlanSet('${k}','m',this.value)"><option value="">— মেনু বেছে নিন —</option>${menus.map(([id,x])=>`<option value="${id}" ${p.m===id?'selected':''}>${stkE(x.name)}</option>`).join('')}</select>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:#34444f">${STK_GROUPS.map((gr,i)=>`<label><input type="checkbox" ${g[i]==='1'?'checked':''} ${canP?'':'disabled'} onchange="stkPlanGrp('${k}',${i},this.checked)"> ${gr[1]} (${bnDigits(h[gr[0]])})</label>`).join('')}</div>
+      ${p.m?`<div class="stk-info">এই বেলায় খাবে: <b>${bnDigits(n)} জন</b></div>`:''}</div>`; }).join('');
+  if(pc.rows.length){
+    const short=pc.rows.filter(r=>r.short>0);
+    out+=`<div class="stk-card"><div class="stk-h">📋 যা লাগবে (মোট ${bnDigits(pc.rows.length)}টি পণ্য)</div>${pc.rows.map(r=>`<div class="stk-li"><div><b>${stkE(r.it.name)}</b><br><span style="color:#8b98a3;font-size:10.5px">${STK_MEALS.filter(m=>r.by[m[0]]).map(m=>m[1]+' '+stkN(r.by[m[0]])).join(' • ')}</span></div><div style="text-align:right;white-space:nowrap"><b>${stkN(r.need)} ${stkE(r.it.unit)}</b><br><span style="font-size:10.5px;color:${r.short>0?'#c94545':'#2f9e5c'}">${r.short>0?'ঘাটতি '+stkN(r.short):'মজুদ আছে '+stkN(r.avail)}</span></div></div>`).join('')}
+      ${money?`<div class="stk-li" style="border-top:2px solid #e2dbc7;margin-top:6px"><span><b>আনুমানিক মোট ব্যয়</b></span><b>${stkM(pc.total)}</b></div>${pc.h.total?`<div class="stk-li"><span><b>আনুমানিক জনপ্রতি</b> (${bnDigits(pc.h.total)} জন)</span><b style="color:#a9822f">${stkM(pc.total/pc.h.total)}</b></div>`:''}`:''}
+      <div class="stk-eb"><button class="stk-btn stk-btng" onclick="stkPlanToUse()">🧾 খরচ তালিকায় নিন</button>${short.length?`<button class="stk-btn2" onclick="stkPlanToBuy()">🛒 ঘাটতি ক্রয় তালিকায় (${bnDigits(short.length)})</button>`:''}<button class="stk-btn2" onclick="stkPdfPlan()">📄 PDF</button></div></div>`;
+  } else out+=`<div class="stk-warn">মেনু বেছে নিলে এখানে মোট পরিমাণের তালিকা আসবে। মেনু না থাকলে নিচে "নতুন মেনু" দিয়ে তৈরি করুন।</div>`;
+  return out+stkMenusHtml();
+}
+function stkPlanToUse(){
+  const d=stkPlanDate(), t=lvTodayISO(), pc=stkPlanCalc(d); if(!pc.rows.length){ alert('আগে মেনু বাছাই করুন'); return; }
+  if(d>t){ alert('এটি আগামীকালের পরিকল্পনা। সেদিন খাওয়া শেষে পরিকল্পনা ট্যাব থেকে "খরচ তালিকায় নিন" চাপুন।'); return; }
+  if(!stkCanEdit(d)){ alert('এই তারিখে খরচ এন্ট্রির অনুমতি নেই।'); return; }
+  const cb=stkCbGet(); pc.rows.forEach(r=>{ STK_MEALS.forEach(([k])=>{ if(!r.by[k]) return; const q=stkR2(r.by[k]); const ex=cb.rows.find(x=>x.id===r.id&&x.meal===k); if(ex) ex.qty=q; else cb.rows.push({id:r.id,meal:k,qty:q}); }); });
+  STK.date=d; STK.tab='use'; STK.flash='পরিকল্পনার পরিমাণ খরচ তালিকায় বসানো হয়েছে — প্রকৃত ব্যবহার অনুযায়ী বদলে নিয়ে সংরক্ষণ করুন।'; stkRender(); window.scrollTo(0,0);
+}
+function stkPlanToBuy(){
+  const pc=stkPlanCalc(stkPlanDate()), pb=stkPbGet(), L=stkLedger();
+  pc.rows.filter(r=>r.short>0).forEach(r=>{ const q=Math.ceil(r.short*100)/100, rate=+(L.final[r.id]||{}).r||0, ex=pb.rows.find(x=>x.id===r.id); if(ex){ ex.q=q; ex.t=stkR2(q*ex.r); } else pb.rows.push({id:r.id,q,r:rate,t:stkR2(q*rate)}); });
+  STK.tab='buy'; STK.flash='ঘাটতির পণ্যগুলো ক্রয় তালিকায় বসানো হয়েছে — দর ও পরিমাণ ঠিক করে সংরক্ষণ করুন।'; stkRender(); window.scrollTo(0,0);
+}
+function stkPdfPlan(){
+  const d=stkPlanDate(), pc=stkPlanCalc(d); const rows=[]; let last='';
+  pc.rows.forEach((r,i)=>{ if(r.it.cat!==last){ last=r.it.cat; rows.push({sec:STK_CATS[r.it.cat]}); } rows.push([bnDigits(r.it.no||''),r.it.name,r.it.unit].concat(STK_MEALS.map(m=>r.by[m[0]]?stkN(r.by[m[0]]):''),[stkN(r.need),stkN(r.avail),r.short>0?stkN(r.short):'—'])); });
+  stkMakePdf({title:'রেশন পরিকল্পনা',sub:stayFmt(d)+' • মোট '+bnDigits(pc.h.total)+' জন (ছাত্র '+bnDigits(pc.h.stu)+', শিক্ষক '+bnDigits(pc.h.tea)+', কর্মচারী '+bnDigits(pc.h.stf)+', মেহমান '+bnDigits(pc.h.gst)+')'+(stkMoney()&&pc.total?' • আনুমানিক ব্যয় '+stkM(pc.total):''),
+    cols:[{h:'ক্রম',w:36,a:'c'},{h:'বিবরণ',a:'l'},{h:'ইউনিট',w:50,a:'c'}].concat(STK_MEALS.map(m=>({h:m[1],w:62,a:'r'})),[{h:'মোট লাগবে',w:80,a:'r'},{h:'মজুদ',w:72,a:'r'},{h:'ঘাটতি',w:72,a:'r'}]),rows,land:true,file:'ration-plan-'+d+'.pdf',foot:'রেশন পরিকল্পনা'});
+}
+function stkMenusHtml(){
+  let h=''; if(STK.me) h+=stkMeForm();
+  h+=`<div class="stk-card"><div class="stk-h">📚 মেনু ও জনপ্রতি পরিমাণ</div>`+stkActiveMenus().map(([id,x])=>`<div class="stk-li"><div><b>${stkE(x.name)}</b><br><span style="color:#8b98a3;font-size:10.5px">${bnDigits(Object.keys(x.items||{}).length)}টি পণ্য • ${(STK_MEALS.find(z=>z[0]===x.meal)||['','—'])[1]}</span></div><div style="white-space:nowrap"><span style="cursor:pointer;padding:4px" onclick="stkMeEdit('${id}')">✏️</span><span style="cursor:pointer;color:#c94545;padding:4px;margin-left:6px" onclick="stkMeDel('${id}')">🗑️</span></div></div>`).join('')||'<div class="stk-info">কোনো মেনু নেই। "নতুন মেনু" দিয়ে শুরু করুন (যেমন: মুরগি-ভাত-ডাল) এবং প্রতিটি পণ্যের জনপ্রতি পরিমাণ লিখুন।</div>';
+  return h+`<button class="stk-btn" style="width:100%;margin-top:10px" onclick="stkMeNew()">➕ নতুন মেনু</button></div>`;
+}
+function stkMeNew(){ STK.me={id:null,name:'',meal:'l',items:{}}; stkRender(); window.scrollTo(0,document.body.scrollHeight); }
+function stkMeEdit(id){ const x=STK.menus[id]; if(!x) return; const items={}; Object.entries(x.items||{}).forEach(([iid,pp])=>{ if(STK.items[iid]) items[iid]=String(stkR(pp*stkSmall(STK.items[iid].unit).f)); }); STK.me={id,name:x.name,meal:x.meal||'l',items}; stkRender(); }
+function stkMeRm(id){ delete STK.me.items[id]; stkRender(); }
+function stkMeForm(){
+  const me=STK.me;
+  return `<div class="stk-card" style="border-color:#a9822f"><div class="stk-h">${me.id?'✏️ মেনু সম্পাদনা':'➕ নতুন মেনু'}</div>
+    <label class="stk-lbl">মেনুর নাম</label><input class="stk-in" value="${stkE(me.name)}" oninput="STK.me.name=this.value" placeholder="যেমন: মুরগি-ভাত-ডাল">
+    <label class="stk-lbl">সাধারণত কোন বেলায়</label><select class="stk-in" onchange="STK.me.meal=this.value">${STK_MEALS.map(m=>`<option value="${m[0]}" ${me.meal===m[0]?'selected':''}>${m[1]}</option>`).join('')}</select>
+    <div class="stk-h" style="margin-top:12px">জনপ্রতি পরিমাণ (একজনের জন্য)</div>`+
+    (Object.keys(me.items).map(id=>{ const it=STK.items[id]; if(!it) return ''; const sm=stkSmall(it.unit);
+      return `<div class="stk-li" style="align-items:center"><div style="flex:1"><b>${stkE(it.name)}</b></div><input type="number" step="any" min="0" inputmode="decimal" class="stk-in" style="width:90px;text-align:center" value="${stkE(me.items[id])}" placeholder="০" oninput="STK.me.items['${id}']=this.value"><span style="font-size:11px;color:#8b98a3;width:40px;margin-left:4px">${stkE(sm.u)}</span><span style="color:#c94545;cursor:pointer;padding:4px" onclick="stkMeRm('${id}')">✕</span></div>`; }).join('')||'<div class="stk-info">কোনো পণ্য নেই</div>')+
+    `<button class="stk-btn2" style="width:100%;margin-top:8px" onclick="stkOpenPicker('menu')">➕ পণ্য যোগ করুন</button>
+    <div class="stk-eb"><button class="stk-btn" onclick="stkMeSave()">💾 মেনু সংরক্ষণ</button><button class="stk-btn2" onclick="STK.me=null;stkRender()">বাতিল</button></div></div>`;
+}
+function stkMeSave(){
+  const me=STK.me; const name=(me.name||'').trim().replace(/[<>"'&]/g,''); if(!name){ alert('মেনুর নাম লিখুন'); return; }
+  const items={}; Object.keys(me.items).forEach(id=>{ const it=STK.items[id], v=+me.items[id]; if(it&&v>0) items[id]=stkR(v/stkSmall(it.unit).f); });
+  if(!Object.keys(items).length){ alert('অন্তত একটি পণ্যের জনপ্রতি পরিমাণ লিখুন'); return; }
+  const id=me.id||stkId('m'), obj={name,meal:me.meal||'l',items,on:1}; STK.menus[id]=obj; stkPut('stockMenus/'+id,obj); stkLog('মেনু',name+' ('+Object.keys(items).length+'টি পণ্য)'); STK.me=null; stkRender();
+}
+function stkMeDel(id){ const x=STK.menus[id]; if(!x||!confirm('"'+x.name+'" মেনুটি মুছবেন?')) return; delete STK.menus[id]; stkPut('stockMenus/'+id,null); stkLog('মেনু মোছা',x.name); stkRender(); }
 
 // ───── ট্যাব ৩: সমন্বয় ও প্রকৃত মজুদ যাচাই ─────
 function stkAdjHtml(){
@@ -13618,11 +13835,11 @@ function stkApplyCount(){
 // ───── ট্যাব ৪: রিপোর্ট ─────
 function stkMonthData(ym){
   const L=stkLedger(), t=lvTodayISO(), dates=L.dates.filter(d=>d.slice(0,7)===ym&&d<=t);
-  const items={}; let buy=0,food=0,other=0,loss=0,stuSum=0,foodForStu=0,entered=0; const perDay=[];
-  dates.forEach(d=>{ const dd=L.day[d]; if(dd.entered) entered++; buy+=dd.buyAmt; food+=dd.foodCost; other+=dd.otherCost; loss+=dd.adjLoss;
-    const s=stkStu(d); if(dd.entered&&s.n){ stuSum+=s.n; foodForStu+=dd.foodCost; } perDay.push({d,v:(dd.entered&&s.n)?dd.foodCost/s.n:0});
+  const items={}; let buy=0,food=0,clean=0,stat=0,loss=0,headSum=0,personForHeads=0,entered=0; const perDay=[];
+  dates.forEach(d=>{ const dd=L.day[d]; if(dd.entered) entered++; buy+=dd.buyAmt; food+=dd.foodCost; clean+=dd.cleanCost; stat+=dd.statCost; loss+=dd.adjLoss;
+    const h=stkHeads(d); if(dd.entered&&h.total){ headSum+=h.total; personForHeads+=dd.personCost; } perDay.push({d,v:(dd.entered&&h.total)?dd.personCost/h.total:0});
     Object.keys(dd.rec).forEach(id=>{ const r=dd.rec[id]; const x=items[id]||(items[id]={o:r.o,bq:0,bamt:0,ut:0,uc:0,aq:0,c:0}); x.bq+=r.bq; x.bamt+=r.bamt; x.ut+=r.ut; x.uc+=r.uc; x.aq+=r.aq; x.c=r.c; }); });
-  return {dates,items,buy,food,other,loss,entered,perStu:stuSum?foodForStu/stuSum:0,perDay};
+  return {dates,items,buy,food,clean,stat,other:clean+stat,loss,entered,person:food+clean,perHead:headSum?personForHeads/headSum:0,perDay};
 }
 function stkReportHtml(){
   const ym=STK.rm||(STK.rm=lvTodayISO().slice(0,7)), md=stkMonthData(ym), money=stkMoney(), L=stkLedger();
@@ -13631,8 +13848,8 @@ function stkReportHtml(){
   const low=stkLowList();
   let h=`<div class="stk-card"><div class="stk-h">📅 মাস নির্বাচন</div><input type="month" class="stk-in" value="${ym}" max="${lvTodayISO().slice(0,7)}" min="${STK.set.openDate.slice(0,7)}" onchange="STK.rm=this.value;stkRender()"></div>`;
   h+=`<div class="stk-sum"><div><b>${bnDigits(md.entered)}/${bnDigits(md.dates.length)}</b><span>এন্ট্রি-সম্পন্ন দিন</span></div>`+
-    (money?`<div><b>${stkM(md.buy)}</b><span>মোট ক্রয়</span></div><div><b>${stkM(md.food)}</b><span>খাদ্য ব্যবহারের মূল্য</span></div><div><b>${stkM(md.other)}</b><span>অন্যান্য সামগ্রীর ব্যবহার</span></div><div><b>${stkM(md.perStu)}</b><span>ছাত্রপ্রতি দৈনিক গড় খাদ্যখরচ</span></div><div><b style="color:${md.loss>0?'#c94545':'#24313b'}">${stkM(md.loss)}</b><span>অপচয়/ঘাটতির মূল্য</span></div>`:'')+`</div>`;
-  if(money&&md.perDay.some(x=>x.v>0)) h+=`<div class="stk-card"><div class="stk-h">📈 দৈনিক ছাত্রপ্রতি খাদ্যখরচ</div><div class="stk-bars">${md.perDay.map(x=>`<div title="${x.d}: ${Math.round(x.v)}" style="height:${Math.max(2,x.v/maxv*100)}%;opacity:${x.v?1:.15}"></div>`).join('')}</div><div class="stk-info" style="display:flex;justify-content:space-between"><span>${md.dates.length?stayShort(md.dates[0]):''}</span><span>সর্বোচ্চ ${stkM(maxv)}</span><span>${md.dates.length?stayShort(md.dates[md.dates.length-1]):''}</span></div></div>`;
+    (money?`<div><b>${stkM(md.buy)}</b><span>মোট ক্রয়</span></div><div><b>${stkM(md.food)}</b><span>খাদ্য ব্যবহারের মূল্য</span></div><div><b>${stkM(md.clean)}</b><span>পরিষ্কার সামগ্রীর ব্যবহার</span></div><div><b>${stkM(md.person)}</b><span>মোট ব্যয় (খাদ্য + পরিষ্কার)</span></div><div><b style="color:#a9822f">${stkM(md.perHead)}</b><span>জনপ্রতি দৈনিক গড় খরচ</span></div><div><b style="color:${md.loss>0?'#c94545':'#24313b'}">${stkM(md.loss)}</b><span>অপচয়/ঘাটতির মূল্য</span></div>`:'')+`</div>`;
+  if(money&&md.perDay.some(x=>x.v>0)) h+=`<div class="stk-card"><div class="stk-h">📈 দৈনিক জনপ্রতি খরচ (খাদ্য + পরিষ্কার)</div><div class="stk-bars">${md.perDay.map(x=>`<div title="${x.d}: ${Math.round(x.v)}" style="height:${Math.max(2,x.v/maxv*100)}%;opacity:${x.v?1:.15}"></div>`).join('')}</div><div class="stk-info" style="display:flex;justify-content:space-between"><span>${md.dates.length?stayShort(md.dates[0]):''}</span><span>সর্বোচ্চ ${stkM(maxv)}</span><span>${md.dates.length?stayShort(md.dates[md.dates.length-1]):''}</span></div></div>`;
   h+=`<div class="stk-card"><div class="stk-h">🚨 কম মজুদ ও ক্রয় তালিকা (${bnDigits(low.length)})</div>${low.map(x=>`<div class="stk-li"><div><b>${stkE(x.it.name)}</b><br><span style="color:#8b98a3;font-size:10.5px">আছে ${stkN(x.q)} • ন্যূনতম ${stkN(x.it.min)} ${stkE(x.it.unit)}</span></div><div style="text-align:right"><b style="color:#c94545">কিনুন ≈ ${stkN(x.need)}</b> ${stkE(x.it.unit)}</div></div>`).join('')||'<div style="color:#8b98a3;font-size:12px">কোনো আইটেম ন্যূনতম মজুদের নিচে নেই (আইটেম ট্যাবে ন্যূনতম মজুদ নির্ধারণ করুন)</div>'}
     ${low.length?`<button class="stk-btn2" style="width:100%;margin-top:10px" onclick="stkPdfReorder()">📄 ক্রয় তালিকা PDF</button>`:''}</div>`;
   h+=`<div class="stk-card"><div class="stk-h">📦 মাসিক আইটেমভিত্তিক সারাংশ</div>${rows.map(id=>{ const x=md.items[id],it=STK.items[id]; return `<div class="stk-li"><div><b>${stkE(it.name)}</b><br><span style="color:#8b98a3;font-size:10.5px">প্রারম্ভিক ${stkN(x.o)} • ক্রয় ${stkN(x.bq)} • ব্যবহার ${stkN(x.ut)} • অবশিষ্ট ${stkN(x.c)} ${stkE(it.unit)}</span></div>${money?`<div style="text-align:right;white-space:nowrap"><b>${stkM(x.uc)}</b></div>`:''}</div>`; }).join('')||'<div style="color:#8b98a3;font-size:12px">এই মাসে কোনো লেনদেন নেই</div>'}
@@ -13724,8 +13941,8 @@ function stkPdfDaily(){
     if(it.cat!==last){ last=it.cat; rows.push({sec:STK_CATS[it.cat]}); }
     const row=[bnDigits(it.no||''),it.name,it.unit,stkN(r.o),r.bq?stkN(r.bq):'',stkN(r.o+r.bq)].concat(r.mu.map(v=>v?stkN(v):''),[stkN(r.ut),stkN(r.c)]); if(money) row.push(r.uc?stkM(r.uc):''); rows.push(row); });
   const cols=[{h:'ক্রম',w:36,a:'c'},{h:'বিবরণ',a:'l'},{h:'ইউনিট',w:50,a:'c'},{h:'প্রারম্ভিক',w:70,a:'r'},{h:'ক্রয়',w:58,a:'r'},{h:'মোট স্টক',w:70,a:'r'}].concat(STK_MEALS.map(m=>({h:m[1],w:54,a:'r'})),[{h:'মোট খরচ',w:64,a:'r'},{h:'অবশিষ্ট',w:72,a:'r'}]); if(money) cols.push({h:'ব্যবহারের মূল্য',w:80,a:'r'});
-  const dd=L.day[d]||{}, stu=stkStu(d);
-  stkMakePdf({title:'দৈনিক স্টক শিট',sub:stayFmt(d)+' • ছাত্র '+bnDigits(stu.n)+(money&&dd.foodCost?' • খাদ্য ব্যবহারের মূল্য '+stkM(dd.foodCost)+' • ছাত্রপ্রতি '+stkM(stu.n?dd.foodCost/stu.n:0):''),cols,rows,land:true,file:'stock-daily-'+d+'.pdf',foot:'দৈনিক স্টক শিট'});
+  const dd=L.day[d]||{}, hd=stkHeads(d);
+  stkMakePdf({title:'দৈনিক স্টক শিট',sub:stayFmt(d)+' • মোট '+bnDigits(hd.total)+' জন (ছাত্র '+bnDigits(hd.stu)+', শিক্ষক '+bnDigits(hd.tea)+', কর্মচারী '+bnDigits(hd.stf)+', মেহমান '+bnDigits(hd.gst)+')'+(money&&dd.personCost?' • ব্যয় '+stkM(dd.personCost)+' • জনপ্রতি '+stkM(hd.total?dd.personCost/hd.total:0):''),cols,rows,land:true,file:'stock-daily-'+d+'.pdf',foot:'দৈনিক স্টক শিট'});
 }
 function stkPdfMonthly(){
   const ym=STK.rm||lvTodayISO().slice(0,7), md=stkMonthData(ym), money=stkMoney();
@@ -13733,7 +13950,7 @@ function stkPdfMonthly(){
   const rows=[]; let last='';
   ids.forEach(id=>{ const it=STK.items[id], x=md.items[id]; if(it.cat!==last){ last=it.cat; rows.push({sec:STK_CATS[it.cat]}); } const row=[bnDigits(it.no||''),it.name,it.unit,stkN(x.o),stkN(x.bq),stkN(x.ut),stkN(x.c)]; if(money) row.push(x.uc?stkM(x.uc):'',x.bamt?stkM(x.bamt):''); rows.push(row); });
   const cols=[{h:'ক্রম',w:34,a:'c'},{h:'বিবরণ',a:'l'},{h:'ইউনিট',w:50,a:'c'},{h:'প্রারম্ভিক',w:62,a:'r'},{h:'ক্রয়',w:58,a:'r'},{h:'ব্যবহার',w:58,a:'r'},{h:'অবশিষ্ট',w:62,a:'r'}]; if(money) cols.push({h:'ব্যবহারের মূল্য',w:80,a:'r'},{h:'ক্রয় মূল্য',w:76,a:'r'});
-  stkMakePdf({title:'মাসিক স্টক রিপোর্ট — '+LV_BN_MONTHS[+ym.slice(5,7)-1]+' '+bnDigits(ym.slice(0,4)),sub:money?('মোট ক্রয় '+stkM(md.buy)+' • খাদ্য ব্যবহার '+stkM(md.food)+' • অন্যান্য '+stkM(md.other)+' • ছাত্রপ্রতি দৈনিক গড় '+stkM(md.perStu)+' • এন্ট্রি '+bnDigits(md.entered)+'/'+bnDigits(md.dates.length)+' দিন'):('এন্ট্রি '+bnDigits(md.entered)+'/'+bnDigits(md.dates.length)+' দিন'),cols,rows,land:false,file:'stock-monthly-'+ym+'.pdf',foot:'মাসিক স্টক রিপোর্ট'});
+  stkMakePdf({title:'মাসিক স্টক রিপোর্ট — '+LV_BN_MONTHS[+ym.slice(5,7)-1]+' '+bnDigits(ym.slice(0,4)),sub:money?('মোট ক্রয় '+stkM(md.buy)+' • খাদ্য ব্যবহার '+stkM(md.food)+' • পরিষ্কার '+stkM(md.clean)+' • জনপ্রতি দৈনিক গড় '+stkM(md.perHead)+' • এন্ট্রি '+bnDigits(md.entered)+'/'+bnDigits(md.dates.length)+' দিন'):('এন্ট্রি '+bnDigits(md.entered)+'/'+bnDigits(md.dates.length)+' দিন'),cols,rows,land:false,file:'stock-monthly-'+ym+'.pdf',foot:'মাসিক স্টক রিপোর্ট'});
 }
 function stkPdfReorder(){
   const low=stkLowList(), rows=low.map((x,i)=>[bnDigits(i+1),x.it.name,x.it.unit,stkN(x.q),stkN(x.it.min),stkN(x.need)]);
